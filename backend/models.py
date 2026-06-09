@@ -6,8 +6,10 @@ class User(Base):
     __tablename__ = "users"
 
     id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=True)
     email = Column(String, unique=True, index=True, nullable=False)
-    password = Column(String, nullable=False)  # Stores SHA-256 hashed password
+    password_hash = Column(String, nullable=False)  # Stores SHA-256 hashed password
+    created_at = Column(DateTime, default=datetime.utcnow)
 
 class OTPCode(Base):
     __tablename__ = "otp_codes"
@@ -42,3 +44,8 @@ class ChatSession(Base):
     current_step = Column(String, default="START")  # e.g., START, AWAITING_EMAIL, AWAITING_OTP, AWAITING_NEW_PASSWORD, COMPLETED
     verified = Column(Boolean, default=False)
     expires_at = Column(DateTime, nullable=False)
+
+    # Registration fields
+    reg_name = Column(String, nullable=True)
+    reg_email = Column(String, nullable=True)
+    reg_password = Column(String, nullable=True)

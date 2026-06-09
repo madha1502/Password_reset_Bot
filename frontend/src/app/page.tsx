@@ -66,7 +66,117 @@ export default function Home() {
   const [users, setUsers] = useState<UserStore[]>([]);
   
   const [selectedEmail, setSelectedEmail] = useState<MockEmail | null>(null);
+  const handleSendMessage = async (textToSend?: string) => {
+    const text = (textToSend || inputMessage).trim();
+    if (!text) return;
+
+    if (!textToSend) setInputMessage("");
+
+    setMessages((prev) => [...prev, { sender: "user", text, timestamp: new Date() }]);
+    setIsTyping(true);
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: text, session_id: sessionId })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setCurrentStep(data.current_step);
+        setSessionEmail(data.email);
+        setIsVerified(data.verified);
+        setLastResponseStatus(data.status || null);
+        setLastResponseActions(data.actions || []);
+
+        setTimeout(() => {
+          setIsTyping(false);
+          setMessages((prev) => [
+            ...prev,
+            { sender: "agent", text: data.message, timestamp: new Date() }
+          ]);
+        }, 650);
+      }
+    } catch (err) {
+      setTimeout(() => {
+        setIsTyping(false);
+        setMessages((prev) => [
+          ...prev,
+          {
+            sender: "agent",
+            text: "Connection failed. Please verify that the FastAPI backend server is active on port 8000.",
+            timestamp: new Date()
+          }
+        ]);
+      }, 650);
+    }
+  };
+
+  const handleResetSession = () => {
+    const randomId = Math.random().toString(36).substring(2, 12).toUpperCase();
+    setSessionId(randomId);
+    setCurrentStep("START");
+    setSessionEmail(null);
+    setIsVerified(false);
+    setLastResponseStatus(null);
+    setLastResponseActions([]);
+    setMessages([
+      {
+        sender: "agent",
+        text: "Authentication session restarted. Please describe your access issue (e.g. 'I forgot my password').",
+        timestamp: new Date()
+      }
+    ]);
+  };
+
+  const handleRegisterSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setRegError("");
+    setRegSuccess("");
+    setRegLoading(true);
+
+    try {
+      const res = await fetch(`${API_BASE_URL}/register`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: regName,
+          email: regEmail,
+          password: regPassword
+        })
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.detail || "Registration failed.");
+      }
+
+      setRegSuccess("Account created successfully!");
+      setTimeout(() => {
+        setShowRegisterModal(false);
+        handleSendMessage("I have successfully registered my account");
+      }, 1500);
+
+    } catch (err: any) {
+      setRegError(err.message || "An error occurred.");
+    } finally {
+      setRegLoading(false);
+    }
+  };
+
+  // New state variables for registration flow
   const [copiedOtp, setCopiedOtp] = useState(false);
+  const [showRegisterModal, setShowRegisterModal] = useState(false);
+  const [regName, setRegName] = useState("");
+  const [regEmail, setRegEmail] = useState("");
+  const [regPassword, setRegPassword] = useState("");
+  const [regError, setRegError] = useState("");
+  const [regSuccess, setRegSuccess] = useState("");
+  const [regLoading, setRegLoading] = useState(false);
+
+  const [lastResponseStatus, setLastResponseStatus] = useState<string | null>(null);
+  const [lastResponseActions, setLastResponseActions] = useState<string[]>([]);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -107,65 +217,7 @@ export default function Home() {
     }
   };
 
-  const handleSendMessage = async (textToSend?: string) => {
-    const text = (textToSend || inputMessage).trim();
-    if (!text) return;
 
-    if (!textToSend) setInputMessage("");
-
-    setMessages((prev) => [...prev, { sender: "user", text, timestamp: new Date() }]);
-    setIsTyping(true);
-
-    try {
-      const response = await fetch(`${API_BASE_URL}/chat`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: text, session_id: sessionId })
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setCurrentStep(data.current_step);
-        setSessionEmail(data.email);
-        setIsVerified(data.verified);
-
-        setTimeout(() => {
-          setIsTyping(false);
-          setMessages((prev) => [
-            ...prev,
-            { sender: "agent", text: data.message, timestamp: new Date() }
-          ]);
-        }, 650);
-      }
-    } catch (err) {
-      setTimeout(() => {
-        setIsTyping(false);
-        setMessages((prev) => [
-          ...prev,
-          {
-            sender: "agent",
-            text: "Connection failed. Please verify that the FastAPI backend server is active on port 8000.",
-            timestamp: new Date()
-          }
-        ]);
-      }, 650);
-    }
-  };
-
-  const handleResetSession = () => {
-    const randomId = Math.random().toString(36).substring(2, 12).toUpperCase();
-    setSessionId(randomId);
-    setCurrentStep("START");
-    setSessionEmail(null);
-    setIsVerified(false);
-    setMessages([
-      {
-        sender: "agent",
-        text: "Authentication session restarted. Please describe your access issue (e.g. 'I forgot my password').",
-        timestamp: new Date()
-      }
-    ]);
-  };
 
   const handleSeedDatabase = async () => {
     if (!confirm("Confirm SQLite store seed reset? This will truncate transactional tables and logs.")) return;
@@ -321,6 +373,37 @@ export default function Home() {
               </div>
             )}
 
+            {currentStep === "AWAITING_REGISTRATION_CHOICE" && (
+              <div className="mb-4">
+                <p className="text-[9px] text-zinc-550 font-bold tracking-wider uppercase mb-2">Options</p>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setRegEmail(sessionEmail || "");
+                      setRegName("");
+                      setRegPassword("");
+                      setRegError("");
+                      setRegSuccess("");
+                      setShowRegisterModal(true);
+                    }}
+                    className="text-[11px] bg-emerald-950/40 hover:bg-emerald-900/60 hover:text-white text-emerald-400 border border-emerald-900/80 hover:border-emerald-700 px-4 py-2 rounded-md transition duration-200 flex items-center gap-1.5 font-medium shadow-sm cursor-pointer"
+                  >
+                    <span>Register New User</span>
+                    <ChevronRight className="w-3 h-3 text-emerald-500" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleSendMessage("Use Another Email")}
+                    className="text-[11px] bg-zinc-900/50 hover:bg-zinc-850 hover:text-white text-zinc-400 border border-zinc-800/80 hover:border-zinc-750 px-4 py-2 rounded-md transition duration-200 flex items-center gap-1.5 font-medium cursor-pointer"
+                  >
+                    <span>Use Another Email</span>
+                    <ChevronRight className="w-3 h-3 text-zinc-650" />
+                  </button>
+                </div>
+              </div>
+            )}
+
             <form
               onSubmit={(e) => {
                 e.preventDefault();
@@ -339,6 +422,12 @@ export default function Home() {
                     ? "Enter 6-digit verification code..."
                     : currentStep === "AWAITING_NEW_PASSWORD"
                     ? "Enter your new credentials (min 6 chars)..."
+                    : currentStep === "AWAITING_REGISTRATION_NAME"
+                    ? "Enter your full name..."
+                    : currentStep === "AWAITING_REGISTRATION_EMAIL"
+                    ? "Enter your email address..."
+                    : currentStep === "AWAITING_REGISTRATION_PASSWORD"
+                    ? "Choose a secure password (min 6 chars)..."
                     : "Ask support bot..."
                 }
                 className="w-full bg-[#09090b] border border-zinc-850 focus:border-zinc-750 focus:outline-none rounded-lg py-3 pl-4.5 pr-12 text-xs text-zinc-200 placeholder-zinc-550 transition font-mono tracking-tight"
@@ -644,20 +733,22 @@ export default function Home() {
                       <thead>
                         <tr className="bg-zinc-900/10 border-b border-zinc-900 text-[10px] text-zinc-500 font-mono">
                           <th className="px-5 py-3">id</th>
+                          <th className="px-5 py-3">name</th>
                           <th className="px-5 py-3">email</th>
                           <th className="px-5 py-3">password_hash (sha256)</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-zinc-900 text-[11px] font-mono text-zinc-400">
-                        {users.map((u) => (
+                        {users.map((u: any) => (
                           <tr key={u.id} className="hover:bg-zinc-900/10 transition">
                             <td className="px-5 py-3 text-zinc-650">{u.id}</td>
+                            <td className="px-5 py-3 text-zinc-250 font-sans text-xs">{u.name || "N/A"}</td>
                             <td className="px-5 py-3 text-zinc-250 font-sans text-xs">{u.email}</td>
                             <td className="px-5 py-3">
                               <div className="flex items-center gap-2 max-w-[280px]">
                                 <Lock className="w-3.5 h-3.5 text-zinc-800 shrink-0" />
-                                <span className="truncate tracking-tight text-[10px] text-zinc-550" title={u.password}>
-                                  {u.password}
+                                <span className="truncate tracking-tight text-[10px] text-zinc-550" title={u.password_hash}>
+                                  {u.password_hash}
                                 </span>
                               </div>
                             </td>
@@ -695,6 +786,95 @@ export default function Home() {
           <span>Ollama/Llama 3.2 Detection: Auto-Fallback Enabled</span>
         </div>
       </footer>
+
+      {showRegisterModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 animate-fade-in">
+          <div className="w-full max-w-md bg-[#09090b] border border-zinc-800 rounded-xl overflow-hidden shadow-2xl flex flex-col">
+            {/* Modal Header */}
+            <div className="px-6 py-4.5 border-b border-zinc-900 flex justify-between items-center bg-zinc-950/40">
+              <span className="text-xs font-semibold uppercase tracking-wider text-zinc-200 flex items-center gap-2">
+                <User className="w-4 h-4 text-zinc-450" /> Register New Account
+              </span>
+              <button
+                type="button"
+                onClick={() => setShowRegisterModal(false)}
+                className="text-zinc-500 hover:text-zinc-350 text-sm transition font-mono cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Modal Form */}
+            <form onSubmit={handleRegisterSubmit} className="p-6 space-y-4 text-xs">
+              {regError && (
+                <div className="p-3 bg-red-955/20 border border-red-900/60 text-red-400 rounded-lg flex items-start gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                  <span>{regError}</span>
+                </div>
+              )}
+              {regSuccess && (
+                <div className="p-3 bg-emerald-955/20 border border-emerald-900/60 text-emerald-400 rounded-lg flex items-start gap-2">
+                  <Check className="w-4 h-4 shrink-0 mt-0.5" />
+                  <span>{regSuccess}</span>
+                </div>
+              )}
+
+              <div className="space-y-1">
+                <label className="text-[10px] uppercase font-bold tracking-wider text-zinc-400">Full Name</label>
+                <input
+                  type="text"
+                  required
+                  value={regName}
+                  onChange={(e) => setRegName(e.target.value)}
+                  placeholder="e.g. John Doe"
+                  className="w-full bg-zinc-900/40 border border-zinc-805 focus:border-zinc-700 focus:outline-none rounded-lg py-2.5 px-3.5 text-zinc-200 placeholder-zinc-600 transition"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[10px] uppercase font-bold tracking-wider text-zinc-400">Email Address</label>
+                <input
+                  type="email"
+                  required
+                  value={regEmail}
+                  onChange={(e) => setRegEmail(e.target.value)}
+                  placeholder="e.g. name@company.com"
+                  className="w-full bg-zinc-900/40 border border-zinc-805 focus:border-zinc-700 focus:outline-none rounded-lg py-2.5 px-3.5 text-zinc-200 placeholder-zinc-600 transition"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[10px] uppercase font-bold tracking-wider text-zinc-400">Password</label>
+                <input
+                  type="password"
+                  required
+                  value={regPassword}
+                  onChange={(e) => setRegPassword(e.target.value)}
+                  placeholder="Minimum 6 characters"
+                  className="w-full bg-zinc-900/40 border border-zinc-805 focus:border-zinc-700 focus:outline-none rounded-lg py-2.5 px-3.5 text-zinc-200 placeholder-zinc-600 transition font-mono"
+                />
+              </div>
+
+              <div className="pt-2 flex justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setShowRegisterModal(false)}
+                  className="px-4 py-2 text-zinc-400 hover:text-white bg-zinc-900 hover:bg-zinc-850 rounded-lg border border-zinc-800 transition duration-150 cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={regLoading}
+                  className="px-5 py-2 text-zinc-950 font-semibold bg-zinc-200 hover:bg-white disabled:opacity-50 disabled:cursor-not-allowed rounded-lg shadow-md transition duration-150 cursor-pointer"
+                >
+                  {regLoading ? "Registering..." : "Create Account"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -71,6 +71,86 @@ def process_fallback_state(db: Session, session: ChatSession, message: str) -> s
         
         return handle_password_reset(db, session, new_password)
 
+    if session.current_step == "AWAITING_REGISTRATION_CHOICE":
+        if "successfully registered" in message_lower:
+            session.current_step = "COMPLETED"
+            db.commit()
+            return "Congratulations! Your account has been registered successfully. Let me know if you need help with anything else."
+        elif "1" in message_lower or "register" in message_lower:
+            session.current_step = "AWAITING_REGISTRATION_NAME"
+            session.reg_name = None
+            session.reg_email = None
+            session.reg_password = None
+            db.commit()
+            log_audit(db, session.email or "anonymous", "REGISTRATION_STARTED")
+            return "Registration started. Please enter your Full Name."
+        elif "2" in message_lower or "another" in message_lower or "retry" in message_lower or "email" in message_lower:
+            session.current_step = "AWAITING_EMAIL"
+            session.email = None
+            db.commit()
+            return "Please enter your registered email address."
+        else:
+            return "No account exists with this email.\n\nWould you like to:\n1. Register New User\n2. Use Another Email"
+
+    if session.current_step == "AWAITING_REGISTRATION_NAME":
+        name = message.strip()
+        if not name:
+            return "Name cannot be empty. Please enter your Full Name."
+        session.reg_name = name
+        session.current_step = "AWAITING_REGISTRATION_EMAIL"
+        db.commit()
+        return f"Got it, {name}. Now, please enter your Email Address."
+
+    if session.current_step == "AWAITING_REGISTRATION_EMAIL":
+        email_match = re.search(r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+", message)
+        if not email_match:
+            return "Please provide a valid Email Address (e.g., name@domain.com)."
+        
+        email = email_match.group(0).strip().lower()
+        existing_user = db.query(User).filter(User.email == email).first()
+        if existing_user:
+            log_audit(db, email, "REGISTRATION_FAILED")
+            return "An account with this email already exists. Please enter a different Email Address."
+        
+        session.reg_email = email
+        session.current_step = "AWAITING_REGISTRATION_PASSWORD"
+        db.commit()
+        return "Excellent. Finally, please choose a password for your new account (minimum 6 characters)."
+
+    if session.current_step == "AWAITING_REGISTRATION_PASSWORD":
+        password = message.strip()
+        if len(password) < 6:
+            return "Password must be at least 6 characters long. Please enter a stronger password."
+        
+        try:
+            existing_user = db.query(User).filter(User.email == session.reg_email).first()
+            if existing_user:
+                log_audit(db, session.reg_email, "REGISTRATION_FAILED")
+                session.current_step = "AWAITING_REGISTRATION_CHOICE"
+                db.commit()
+                return "An account with this email already exists. Registration failed. Would you like to:\n1. Register New User\n2. Use Another Email"
+
+            new_user = User(
+                name=session.reg_name,
+                email=session.reg_email,
+                password_hash=hash_password(password),
+                created_at=datetime.utcnow()
+            )
+            db.add(new_user)
+            db.commit()
+            log_audit(db, session.reg_email, "USER_REGISTERED")
+            
+            session.email = session.reg_email
+            session.reg_name = None
+            session.reg_email = None
+            session.reg_password = None
+            session.current_step = "COMPLETED"
+            db.commit()
+            return f"Account created successfully for {new_user.email}! Your registration is complete. Let me know if there's anything else I can assist with."
+        except Exception as e:
+            log_audit(db, session.reg_email or "unknown", "REGISTRATION_FAILED")
+            return f"An error occurred during registration: {str(e)}. Please try again."
+
     return "I am here to help you reset your password. Please let me know how I can assist."
 
 # Core state transition handlers called by both LLM and Fallback
@@ -82,8 +162,11 @@ def handle_provided_email(db: Session, session: ChatSession, email: str) -> str:
     
     if not user:
         # We log that user was not found for auditable attempts
-        log_audit(db, email, "RESET_FAILED_USER_NOT_FOUND")
-        return f"I couldn't find an account matching '{email}'. Please check the spelling and try again."
+        log_audit(db, email, "USER_NOT_FOUND")
+        session.current_step = "AWAITING_REGISTRATION_CHOICE"
+        session.email = email
+        db.commit()
+        return "No account exists with this email.\n\nWould you like to:\n1. Register New User\n2. Use Another Email"
 
     log_audit(db, email, "USER_FOUND")
     
@@ -149,7 +232,7 @@ def handle_password_reset(db: Session, session: ChatSession, new_password: str) 
     if not user:
         return "User not found. Reset cancelled."
 
-    user.password = hash_password(new_password)
+    user.password_hash = hash_password(new_password)
     log_audit(db, email, "PASSWORD_RESET")
     
     session.current_step = "COMPLETED"
@@ -182,26 +265,34 @@ def process_agent_chat(db: Session, session_id: str, message: str) -> tuple:
             model_to_use = "llama3.2" if "llama3.2:latest" in models or "llama3.2" in models else (models[0] if models else "llama3.2")
             
             # Formulate prompt
-            system_prompt = f"""You are a helpful IT support helpdesk agent guiding the user through a password reset workflow.
+            system_prompt = f"""You are a helpful IT support helpdesk agent guiding the user through a password reset or registration workflow.
 Current session state:
 - Step: {session.current_step}
 - User Email: {session.email or 'None'}
 - Identity Verified: {session.verified}
+- Collected Name: {session.reg_name or 'None'}
+- Collected Email: {session.reg_email or 'None'}
 
 You MUST follow these rules:
 1. If Step is START and they want to reset, reply helpfully asking for their registered email.
 2. If Step is AWAITING_EMAIL and they provide an email, do NOT try to verify it yourself. Extract it and respond normally.
 3. If Step is AWAITING_OTP, instruct them to enter the 6-digit OTP code.
 4. If Step is AWAITING_NEW_PASSWORD, ask them to provide their new password.
-5. Keep answers short, secure, and professional.
+5. If Step is AWAITING_REGISTRATION_CHOICE, ask if they want to (1) Register New User or (2) Use Another Email.
+6. If Step is AWAITING_REGISTRATION_NAME, ask for their full name.
+7. If Step is AWAITING_REGISTRATION_EMAIL, ask for their email address.
+8. If Step is AWAITING_REGISTRATION_PASSWORD, ask for their new password.
+9. Keep answers short, secure, and professional.
 
 Analyze the user's message: "{message}"
 Respond with a JSON object ONLY containing:
 {{
-  "response_message": "your conversational reply to the user, guiding them to the next action based on their input",
+  "response_message": "your conversational reply to the user guiding them to the next action based on their input",
   "extracted_email": "extracted email address from the user message, or null if not present",
   "extracted_otp": "extracted 6-digit OTP code, or null if not present",
-  "extracted_password": "extracted new password (only if Step is AWAITING_NEW_PASSWORD), or null if not present"
+  "extracted_password": "extracted password (only if Step is AWAITING_NEW_PASSWORD or AWAITING_REGISTRATION_PASSWORD), or null if not present",
+  "extracted_name": "extracted full name (only if Step is AWAITING_REGISTRATION_NAME), or null if not present",
+  "extracted_choice": "extracted registration choice ('register' or 'retry_email'), or null if not present"
 }}
 Do not write anything other than the raw JSON output.
 """
@@ -226,6 +317,8 @@ Do not write anything other than the raw JSON output.
                 extracted_email = data.get("extracted_email")
                 extracted_otp = data.get("extracted_otp")
                 extracted_password = data.get("extracted_password")
+                extracted_name = data.get("extracted_name")
+                extracted_choice = data.get("extracted_choice")
                 
                 # Check states and run logic
                 if session.current_step == "START" or session.current_step == "COMPLETED":
@@ -265,6 +358,90 @@ Do not write anything other than the raw JSON output.
                         response_msg = handle_password_reset(db, session, password_candidate)
                     else:
                         response_msg = "Your new password must be at least 6 characters long. Please type in a new password."
+
+                elif session.current_step == "AWAITING_REGISTRATION_CHOICE":
+                    message_lower = message.lower().strip()
+                    if "successfully registered" in message_lower:
+                        session.current_step = "COMPLETED"
+                        db.commit()
+                        response_msg = "Congratulations! Your account has been registered successfully. Let me know if you need help with anything else."
+                    else:
+                        choice = extracted_choice or ("register" if "1" in message_lower or "register" in message_lower else ("retry_email" if "2" in message_lower or "another" in message_lower or "retry" in message_lower or "email" in message_lower else None))
+                        if choice == "register":
+                            session.current_step = "AWAITING_REGISTRATION_NAME"
+                            session.reg_name = None
+                            session.reg_email = None
+                            session.reg_password = None
+                            db.commit()
+                            log_audit(db, session.email or "anonymous", "REGISTRATION_STARTED")
+                            response_msg = "Registration started. Please enter your Full Name."
+                        elif choice == "retry_email":
+                            session.current_step = "AWAITING_EMAIL"
+                            session.email = None
+                            db.commit()
+                            response_msg = "Please enter your registered email address."
+                        else:
+                            response_msg = "No account exists with this email.\n\nWould you like to:\n1. Register New User\n2. Use Another Email"
+
+                elif session.current_step == "AWAITING_REGISTRATION_NAME":
+                    name = extracted_name or message.strip()
+                    if name:
+                        session.reg_name = name
+                        session.current_step = "AWAITING_REGISTRATION_EMAIL"
+                        db.commit()
+                        response_msg = f"Got it, {name}. Now, please enter your Email Address."
+                    else:
+                        response_msg = "Name cannot be empty. Please enter your Full Name."
+
+                elif session.current_step == "AWAITING_REGISTRATION_EMAIL":
+                    email_cand = extracted_email or (re.search(r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+", message).group(0) if re.search(r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+", message) else None)
+                    if email_cand:
+                        email_cand = email_cand.strip().lower()
+                        existing_user = db.query(User).filter(User.email == email_cand).first()
+                        if existing_user:
+                            log_audit(db, email_cand, "REGISTRATION_FAILED")
+                            response_msg = "An account with this email already exists. Please enter a different Email Address."
+                        else:
+                            session.reg_email = email_cand
+                            session.current_step = "AWAITING_REGISTRATION_PASSWORD"
+                            db.commit()
+                            response_msg = "Excellent. Finally, please choose a password for your new account (minimum 6 characters)."
+                    else:
+                        response_msg = "Please provide a valid Email Address (e.g., name@domain.com)."
+
+                elif session.current_step == "AWAITING_REGISTRATION_PASSWORD":
+                    password_cand = extracted_password or message.strip()
+                    if password_cand and len(password_cand) >= 6:
+                        try:
+                            existing_user = db.query(User).filter(User.email == session.reg_email).first()
+                            if existing_user:
+                                log_audit(db, session.reg_email, "REGISTRATION_FAILED")
+                                session.current_step = "AWAITING_REGISTRATION_CHOICE"
+                                db.commit()
+                                response_msg = "An account with this email already exists. Registration failed. Would you like to:\n1. Register New User\n2. Use Another Email"
+                            else:
+                                new_user = User(
+                                    name=session.reg_name,
+                                    email=session.reg_email,
+                                    password_hash=hash_password(password_cand),
+                                    created_at=datetime.utcnow()
+                                )
+                                db.add(new_user)
+                                db.commit()
+                                log_audit(db, session.reg_email, "USER_REGISTERED")
+                                
+                                session.email = session.reg_email
+                                session.reg_name = None
+                                session.reg_email = None
+                                session.reg_password = None
+                                session.current_step = "COMPLETED"
+                                db.commit()
+                                response_msg = f"Account created successfully for {new_user.email}! Your registration is complete. Let me know if there's anything else I can assist with."
+                        except Exception as e:
+                            log_audit(db, session.reg_email or "unknown", "REGISTRATION_FAILED")
+                            response_msg = f"An error occurred during registration: {str(e)}. Please try again."
+                    else:
+                        response_msg = "Password must be at least 6 characters long. Please enter a stronger password."
 
                 return response_msg, session
     except Exception as e:

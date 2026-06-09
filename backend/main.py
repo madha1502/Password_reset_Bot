@@ -1,11 +1,12 @@
 import os
+import re
 from typing import List
 from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta
 
-from database import engine, Base, get_db
+from database import engine, Base, get_db, run_migrations
 from models import User, OTPCode, AuditLog, MockEmail, ChatSession
 from schemas import (
     ResetRequest,
@@ -15,7 +16,8 @@ from schemas import (
     ChatRequest,
     ChatResponse,
     MockEmailResponse,
-    UserResponse
+    UserResponse,
+    RegisterRequest
 )
 from agent import (
     process_agent_chat,
@@ -43,23 +45,25 @@ app.add_middleware(
 
 # Create tables on startup
 Base.metadata.create_all(bind=engine)
+run_migrations(engine)
 
 # Auto-seed mock users if table is empty
 @app.on_event("startup")
 def startup_populate_db():
     db = next(get_db())
     try:
+        run_migrations(engine)
         user_count = db.query(User).count()
         if user_count == 0:
             mock_users = [
-                ("admin@example.com", "adminpass123"),
-                ("user@example.com", "userpass456"),
-                ("test@example.com", "testpass789"),
-                ("john.doe@company.com", "companysecure123")
+                ("Admin", "admin@example.com", "adminpass123"),
+                ("Regular User", "user@example.com", "userpass456"),
+                ("Test User", "test@example.com", "testpass789"),
+                ("John Doe", "john.doe@company.com", "companysecure123")
             ]
-            for email, password in mock_users:
+            for name, email, password in mock_users:
                 hashed = hash_password(password)
-                new_user = User(email=email, password=hashed)
+                new_user = User(name=name, email=email, password_hash=hashed)
                 db.add(new_user)
             db.commit()
             print("[Startup] Seeded default mock users into database.")
@@ -80,11 +84,15 @@ def request_reset(payload: ResetRequest, db: Session = Depends(get_db)):
     # Check if user exists
     user = db.query(User).filter(User.email == email).first()
     if not user:
-        log_audit(db, email, "RESET_FAILED_USER_NOT_FOUND")
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="No user registered with this email address."
-        )
+        log_audit(db, email, "USER_NOT_FOUND")
+        return {
+            "status": "USER_NOT_FOUND",
+            "message": "No account found with this email.",
+            "actions": [
+                "register",
+                "retry_email"
+            ]
+        }
     
     log_audit(db, email, "USER_FOUND")
 
@@ -190,7 +198,7 @@ def reset_password(payload: PasswordResetRequest, db: Session = Depends(get_db))
             detail="User not found."
         )
 
-    user.password = hash_password(new_password)
+    user.password_hash = hash_password(new_password)
     db.commit()
     log_audit(db, email, "PASSWORD_RESET")
 
@@ -213,6 +221,70 @@ def get_audit_logs(db: Session = Depends(get_db)):
 
 # ----------------- Chat Agent API Endpoint -----------------
 
+@app.post("/register", status_code=status.HTTP_200_OK)
+def register(payload: RegisterRequest, db: Session = Depends(get_db)):
+    name = payload.name.strip()
+    email = payload.email.strip().lower()
+    password = payload.password.strip()
+
+    # Validate name cannot be empty
+    if not name:
+        log_audit(db, email or "unknown", "REGISTRATION_FAILED")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Name cannot be empty."
+        )
+
+    # Validate email format
+    email_regex = r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$"
+    if not re.match(email_regex, email):
+        log_audit(db, email, "REGISTRATION_FAILED")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid email format."
+        )
+
+    # Validate email uniqueness
+    existing_user = db.query(User).filter(User.email == email).first()
+    if existing_user:
+        log_audit(db, email, "REGISTRATION_FAILED")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="An account with this email already exists."
+        )
+
+    # Validate password strength
+    if len(password) < 6:
+        log_audit(db, email, "REGISTRATION_FAILED")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Password must be at least 6 characters long."
+        )
+
+    log_audit(db, email, "REGISTRATION_STARTED")
+
+    try:
+        new_user = User(
+            name=name,
+            email=email,
+            password_hash=hash_password(password),
+            created_at=datetime.utcnow()
+        )
+        db.add(new_user)
+        db.commit()
+        log_audit(db, email, "USER_REGISTERED")
+        return {
+            "status": "SUCCESS",
+            "message": "Account created successfully."
+        }
+    except Exception as e:
+        db.rollback()
+        log_audit(db, email, "REGISTRATION_FAILED")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Registration failed: {str(e)}"
+        )
+
 @app.post("/chat", response_model=ChatResponse)
 def chat_agent(payload: ChatRequest, db: Session = Depends(get_db)):
     session_id = payload.session_id.strip()
@@ -221,12 +293,20 @@ def chat_agent(payload: ChatRequest, db: Session = Depends(get_db)):
     # Handle agent conversational logic
     response_message, session = process_agent_chat(db, session_id, message)
 
+    status_val = None
+    actions_val = None
+    if session.current_step == "AWAITING_REGISTRATION_CHOICE":
+        status_val = "USER_NOT_FOUND"
+        actions_val = ["register", "retry_email"]
+
     return ChatResponse(
         message=response_message,
         session_id=session.session_id,
         current_step=session.current_step,
         email=session.email,
-        verified=session.verified
+        verified=session.verified,
+        status=status_val,
+        actions=actions_val
     )
 
 # ----------------- Debug / Utility Endpoints -----------------
@@ -253,14 +333,14 @@ def trigger_seed(db: Session = Depends(get_db)):
         db.commit()
 
         mock_users = [
-            ("admin@example.com", "adminpass123"),
-            ("user@example.com", "userpass456"),
-            ("test@example.com", "testpass789"),
-            ("john.doe@company.com", "companysecure123")
+            ("Admin", "admin@example.com", "adminpass123"),
+            ("Regular User", "user@example.com", "userpass456"),
+            ("Test User", "test@example.com", "testpass789"),
+            ("John Doe", "john.doe@company.com", "companysecure123")
         ]
-        for email, password in mock_users:
+        for name, email, password in mock_users:
             hashed = hash_password(password)
-            new_user = User(email=email, password=hashed)
+            new_user = User(name=name, email=email, password_hash=hashed)
             db.add(new_user)
         db.commit()
         

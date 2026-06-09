@@ -34,6 +34,8 @@ class ChatResponse(BaseModel):
     current_step: str
     email: Optional[str] = None
     verified: bool = False
+    status: Optional[str] = None
+    actions: Optional[List[str]] = None
 
 class MockEmailResponse(BaseModel):
     id: int
@@ -48,10 +50,16 @@ class MockEmailResponse(BaseModel):
 
 class UserResponse(BaseModel):
     id: int
+    name: Optional[str] = None
     email: str
-    # Password hash is returned in debug view to let developers inspect changes in real time.
-    password: str
+    password_hash: str
+    created_at: Optional[datetime] = None
 
     class Config:
         orm_mode = True
         from_attributes = True
+
+class RegisterRequest(BaseModel):
+    name: str
+    email: str
+    password: str
