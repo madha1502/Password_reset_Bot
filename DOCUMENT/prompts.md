@@ -1,4 +1,4 @@
-# Master Development Prompt – Password Reset Walkthrough Bot
+# Password Reset Walkthrough Bot
 
 ## Project Goal
 
