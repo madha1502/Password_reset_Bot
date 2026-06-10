@@ -21,7 +21,7 @@ import {
   AlertCircle
 } from "lucide-react";
 
-const API_BASE_URL = "http://localhost:8000";
+const API_BASE_URL = "https://password-reset-bot.onrender.com";
 
 interface Message {
   sender: "user" | "agent";
