@@ -1,55 +1,178 @@
-# AI Prompts Documentation
+# Master Development Prompt – Password Reset Walkthrough Bot
 
-This file documents the system prompts and structured data techniques used during development of the conversational Password Reset Walkthrough Agent.
+## Project Goal
 
----
+Develop a production-ready AI-powered Password Reset Walkthrough Bot that assists users in securely recovering access to their accounts through a guided password reset process.
 
-## 1. System Prompt: Conversational Helpdesk Agent
-
-This prompt is sent to the local Llama 3.2 model in `agent.py` to guide the helpdesk agent through user dialog, maintaining a conversational tone while extracting entities in a strictly structured format.
-
-### Prompt Template
-
-```markdown
-You are a helpful IT support helpdesk agent guiding the user through a password reset workflow.
-Current session state:
-- Step: {session.current_step}
-- User Email: {session.email or 'None'}
-- Identity Verified: {session.verified}
-
-You MUST follow these rules:
-1. If Step is START and they want to reset, reply helpfully asking for their registered email.
-2. If Step is AWAITING_EMAIL and they provide an email, do NOT try to verify it yourself. Extract it and respond normally.
-3. If Step is AWAITING_OTP, instruct them to enter the 6-digit OTP code.
-4. If Step is AWAITING_NEW_PASSWORD, ask them to provide their new password.
-5. Keep answers short, secure, and professional.
-
-Analyze the user's message: "{message}"
-Respond with a JSON object ONLY containing:
-{{
-  "response_message": "your conversational reply to the user, guiding them to the next action based on their input",
-  "extracted_email": "extracted email address from the user message, or null if not present",
-  "extracted_otp": "extracted 6-digit OTP code, or null if not present",
-  "extracted_password": "extracted new password (only if Step is AWAITING_NEW_PASSWORD), or null if not present"
-}}
-Do not write anything other than the raw JSON output.
-```
+The system should combine secure authentication practices, OTP verification, AI-assisted risk assessment, user-friendly walkthrough guidance, and modern web technologies.
 
 ---
 
-## 2. Rationale behind Prompt Engineering Choices
+## Core Requirements
 
-### Structured Output (JSON) Gating
-The system prompt requests the LLM to output a raw JSON structure. We use the Ollama API options setting `"format": "json"` to guarantee the model enforces JSON syntax.
-By doing so, the AI does *not* direct database updates or send emails; it purely acts as a natural language parser that returns structured metadata (`extracted_email`, `extracted_otp`, `extracted_password`). The FastAPI Python backend processes these variables deterministically. This keeps the agent's actions secure and gated by code logic, preventing injection bypass attempts.
+Build a complete full-stack application with:
 
-### State Context Injection
-Each time the user sends a chat, the backend fetches the `ChatSession` record and injects its variables (`current_step`, `email`, `verified`) into the prompt headers. This ensures the agent is context-aware across messages, preventing it from losing track of the current walkthrough stage.
+### Authentication Module
+
+* User Registration
+* Secure Login
+* Password Hashing
+* Session Management
+* Logout Functionality
+
+### Password Recovery Module
+
+* Forgot Password Workflow
+* OTP Generation
+* OTP Verification
+* OTP Expiration Handling
+* Secure Password Reset
+
+### Walkthrough Assistant
+
+* Step-by-step guidance during recovery
+* Clear instructions for users
+* Progress tracking
+* Error handling and recovery suggestions
+* User-friendly conversational workflow
+
+### AI Risk Analysis Engine
+
+* Analyze password reset requests
+* Calculate risk score
+* Classify requests as:
+
+  * SAFE
+  * MEDIUM RISK
+  * HIGH RISK
+* Provide recommendations based on risk level
+
+### Dashboard
+
+* User profile information
+* Account management
+* Recovery history
+* Security status display
 
 ---
 
-## 3. Fallback Pattern Engine
-If Ollama is not installed or offline, the system mimics the LLM's logical behavior using regex extraction rules:
-- **Email Regex**: `[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+`
-- **OTP Regex**: `\b\d{6}\b`
-- **Intent Classifier**: Scans input for variations of: `reset`, `forgot`, `login`, `recover`, `password`, `account`.
+## Technical Stack
+
+### Frontend
+
+* HTML5
+* CSS3
+* Bootstrap 5
+* JavaScript
+
+### Backend
+
+* Python
+* FastAPI
+* Uvicorn
+
+### Database
+
+* SQLite
+
+### Security
+
+* Password Hashing
+* OTP Verification
+* Session Protection
+* Input Validation
+
+---
+
+## Functional Workflow
+
+1. User registers an account.
+2. User logs into the system.
+3. User forgets password.
+4. User initiates password recovery.
+5. System generates OTP.
+6. OTP is sent to registered email.
+7. Walkthrough Bot guides user through verification steps.
+8. AI engine evaluates request risk.
+9. OTP validation is performed.
+10. User creates a new password.
+11. Password is securely updated.
+12. User regains account access.
+
+---
+
+## AI Walkthrough Behavior
+
+The bot should:
+
+* Explain each recovery step.
+* Provide contextual guidance.
+* Detect invalid inputs.
+* Suggest corrective actions.
+* Reduce user confusion.
+* Improve recovery success rate.
+
+Example:
+
+Step 1: Enter your registered email.
+
+Step 2: Check your email inbox for the OTP.
+
+Step 3: Enter the received OTP.
+
+Step 4: Create a strong new password.
+
+Step 5: Confirm password update.
+
+Recovery completed successfully.
+
+---
+
+## Security Requirements
+
+* Store passwords using hashing.
+* Never store plain-text passwords.
+* OTP must expire after a fixed duration.
+* Prevent unauthorized password resets.
+* Validate all user inputs.
+* Protect against common web vulnerabilities.
+
+---
+
+## API Endpoints
+
+### Authentication
+
+* POST /register
+* POST /login
+* GET /logout
+
+### Password Recovery
+
+* POST /forgot-password
+* POST /verify-otp
+* POST /reset-password
+
+### AI Analysis
+
+* POST /risk-analysis
+
+---
+
+## Project Deliverables
+
+* Complete source code
+* Frontend pages
+* Backend APIs
+* Database integration
+* Documentation
+* Screenshots
+* Deployment guide
+* Architecture diagram
+* Testing report
+
+---
+
+## Expected Outcome
+
+The final system should function as a secure, intelligent, and user-friendly Password Reset Walkthrough Bot capable of assisting users through password recovery while maintaining strong security standards and demonstrating practical AI integration in authentication workflows.
