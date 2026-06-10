@@ -35,7 +35,7 @@ def seed_db():
         print("[Seed] Seeding mock users...")
         for email, password in mock_users:
             hashed = hash_password(password)
-            new_user = User(email=email, password=hashed)
+            new_user = User(email=email, password_hash=hashed)
             db.add(new_user)
         
         db.commit()

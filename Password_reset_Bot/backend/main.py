@@ -35,12 +35,20 @@ app = FastAPI(
 )
 
 # CORS Configuration
+raw_origins = os.getenv("ALLOWED_ORIGINS", "")
+if raw_origins:
+    allowed_origins = [origin.strip() for origin in raw_origins.split(",") if origin.strip()]
+else:
+    allowed_origins = [
+        "https://password-reset-bot-five.vercel.app",
+        "https://password-reset-bot-git-main-madha1502s-projects.vercel.app",
+        "http://localhost:3000",
+        "http://127.0.0.1:3000"
+    ]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "https://password-reset-bot-five.vercel.app",
-        "https://password-reset-bot-git-main-madha1502s-projects.vercel.app"
-    ],
+    allow_origins=allowed_origins,
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
