@@ -1,20 +1,23 @@
 import os
-import resend
+import urllib.request
+import urllib.error
+import json
 from sqlalchemy.orm import Session
 from models import MockEmail, User
 from datetime import datetime
 from fastapi import HTTPException, status
 
+
 def send_otp_email(db: Session, to_email: str, otp: str) -> bool:
-    # 1. Check for required Resend API key
-    api_key = os.getenv("RESEND_API_KEY")
-    mail_from = os.getenv("MAIL_FROM", "Identity Portal <onboarding@resend.dev>")
+    # 1. Check for required SendGrid API key
+    api_key = os.getenv("SENDGRID_API_KEY")
+    mail_from = os.getenv("MAIL_FROM", "madhavanvsb2023@gmail.com")
 
     if not api_key:
-        print("[Email Service] RESEND_API_KEY is not set in environment variables.")
+        print("[Email Service] SENDGRID_API_KEY is not set in environment variables.")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Email service is not configured. Please set RESEND_API_KEY in your environment variables."
+            detail="Email service is not configured. Please set SENDGRID_API_KEY in your environment variables."
         )
 
     # 2. Fetch user greeting name
@@ -42,13 +45,12 @@ def send_otp_email(db: Session, to_email: str, otp: str) -> bool:
             border: 1px solid #e4e4e7;
             border-radius: 8px;
             padding: 32px;
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
         }}
         .logo {{
             font-size: 20px;
             font-weight: 700;
             color: #09090b;
-            letter-spacing: -0.05em;
             text-align: center;
             margin-bottom: 16px;
         }}
@@ -57,17 +59,8 @@ def send_otp_email(db: Session, to_email: str, otp: str) -> bool:
             background-color: #e4e4e7;
             margin: 16px 0 24px;
         }}
-        .greeting {{
-            font-size: 16px;
-            line-height: 24px;
-            margin-bottom: 16px;
-        }}
-        .intro {{
-            font-size: 14px;
-            line-height: 20px;
-            color: #52525b;
-            margin-bottom: 24px;
-        }}
+        .greeting {{ font-size: 16px; margin-bottom: 16px; }}
+        .intro {{ font-size: 14px; color: #52525b; margin-bottom: 24px; }}
         .otp-container {{
             background-color: #f4f4f5;
             border: 1px solid #e4e4e7;
@@ -84,20 +77,15 @@ def send_otp_email(db: Session, to_email: str, otp: str) -> bool:
             margin-bottom: 8px;
         }}
         .otp-code {{
-            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+            font-family: monospace;
             font-size: 36px;
             font-weight: 700;
             letter-spacing: 0.15em;
             color: #09090b;
         }}
-        .expiry-info {{
-            font-size: 13px;
-            color: #71717a;
-            margin-top: 8px;
-        }}
+        .expiry {{ font-size: 13px; color: #71717a; margin-top: 8px; }}
         .warning {{
             font-size: 12px;
-            line-height: 18px;
             color: #e11d48;
             background-color: #fff1f2;
             border: 1px solid #ffe4e6;
@@ -105,12 +93,7 @@ def send_otp_email(db: Session, to_email: str, otp: str) -> bool:
             padding: 12px 16px;
             margin-bottom: 24px;
         }}
-        .footer {{
-            text-align: center;
-            font-size: 12px;
-            color: #a1a1aa;
-            margin-top: 32px;
-        }}
+        .footer {{ text-align: center; font-size: 12px; color: #a1a1aa; margin-top: 32px; }}
     </style>
 </head>
 <body>
@@ -125,19 +108,16 @@ def send_otp_email(db: Session, to_email: str, otp: str) -> bool:
         <div class="otp-container">
             <div class="otp-label">Your One-Time Password</div>
             <div class="otp-code">{otp}</div>
-            <div class="expiry-info">Valid for <strong>5 minutes</strong> only.</div>
+            <div class="expiry">Valid for <strong>5 minutes</strong> only.</div>
         </div>
         <div class="warning">
-            <strong>⚠️ Security Warning:</strong> Never share this OTP with anyone — including support staff.
+            <strong>⚠️ Security Warning:</strong> Never share this OTP with anyone.
             Our team will never ask for your verification code.
         </div>
         <div class="intro">
-            If you did not request this password reset, please ignore this email.
-            Your account remains secure.
+            If you did not request this reset, please ignore this email.
         </div>
-        <div class="footer">
-            &copy; 2026 Identity Portal. All rights reserved.
-        </div>
+        <div class="footer">&copy; 2026 Identity Portal. All rights reserved.</div>
     </div>
 </body>
 </html>"""
@@ -152,8 +132,7 @@ We received a request to reset the password for your Identity Portal account.
 
 This code is valid for 5 minutes only.
 
-SECURITY WARNING: Never share this OTP with anyone, including support staff.
-Our team will never ask for your verification code.
+SECURITY WARNING: Never share this OTP with anyone.
 
 If you did not request this reset, please ignore this email.
 
@@ -173,25 +152,45 @@ Identity Portal Team
         db.add(mock_email)
         db.commit()
         db.refresh(mock_email)
-        print(f"[Email Service] Mock email saved to DB. ID: {mock_email.id} (OTP redacted)")
+        print(f"[Email Service] Mock email saved. ID: {mock_email.id} (OTP redacted)")
     except Exception as db_err:
         print(f"[Email Service] Error saving mock email: {db_err}")
 
-    # 5. Send via Resend HTTP API
+    # 5. Send via SendGrid HTTP API
     try:
-        resend.api_key = api_key
-        params: resend.Emails.SendParams = {
-            "from": mail_from,
-            "to": [to_email],
+        payload = json.dumps({
+            "personalizations": [{"to": [{"email": to_email}]}],
+            "from": {"email": mail_from},
             "subject": "Password Reset OTP",
-            "html": html_body,
-            "text": plain_body
-        }
-        email_response = resend.Emails.send(params)
-        print(f"[Email Service] Email sent via Resend. ID: {email_response.get('id', 'N/A')}")
-        return True
+            "content": [
+                {"type": "text/plain", "value": plain_body},
+                {"type": "text/html", "value": html_body}
+            ]
+        }).encode("utf-8")
+
+        req = urllib.request.Request(
+            "https://api.sendgrid.com/v3/mail/send",
+            data=payload,
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json"
+            },
+            method="POST"
+        )
+
+        with urllib.request.urlopen(req) as response:
+            print(f"[Email Service] Email sent via SendGrid. Status: {response.status}")
+            return True
+
+    except urllib.error.HTTPError as e:
+        error_body = e.read().decode("utf-8")
+        print(f"[Email Service] SendGrid error {e.code}: {error_body}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to send email via SendGrid: {error_body}"
+        )
     except Exception as e:
-        print(f"[Email Service] Resend API error: {e}")
+        print(f"[Email Service] Unexpected error: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to send email: {str(e)}"
