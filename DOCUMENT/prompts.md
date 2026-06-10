@@ -1,178 +1,342 @@
-# Password Reset Walkthrough Bot
+# 🔐 Password Reset Walkthrough Bot - Complete Development Prompts
 
-## Project Goal
+## 📌 Master Project Prompt
 
-Develop a production-ready AI-powered Password Reset Walkthrough Bot that assists users in securely recovering access to their accounts through a guided password reset process.
+Develop a complete AI-Powered Password Reset Walkthrough Bot that helps users securely recover their accounts.
 
-The system should combine secure authentication practices, OTP verification, AI-assisted risk assessment, user-friendly walkthrough guidance, and modern web technologies.
-
----
-
-## Core Requirements
-
-Build a complete full-stack application with:
-
-### Authentication Module
+The system must include:
 
 * User Registration
-* Secure Login
-* Password Hashing
+* User Login
 * Session Management
-* Logout Functionality
+* OTP-Based Password Recovery
+* AI Risk Assessment Engine
+* Password Reset Functionality
+* User Dashboard
+* FastAPI Backend
+* SQLite Database
+* Responsive Frontend
+* Deployment Ready Architecture
 
-### Password Recovery Module
+The project should be developed in 7 phases:
 
-* Forgot Password Workflow
-* OTP Generation
-* OTP Verification
-* OTP Expiration Handling
-* Secure Password Reset
+1. Authentication System
+2. OTP Recovery Module
+3. AI Risk Assessment Engine
+4. Backend API Development
+5. Frontend Integration
+6. Testing & Validation
+7. Deployment & Documentation
 
-### Walkthrough Assistant
-
-* Step-by-step guidance during recovery
-* Clear instructions for users
-* Progress tracking
-* Error handling and recovery suggestions
-* User-friendly conversational workflow
-
-### AI Risk Analysis Engine
-
-* Analyze password reset requests
-* Calculate risk score
-* Classify requests as:
-
-  * SAFE
-  * MEDIUM RISK
-  * HIGH RISK
-* Provide recommendations based on risk level
-
-### Dashboard
-
-* User profile information
-* Account management
-* Recovery history
-* Security status display
+All code should be modular, secure, scalable, and production-ready.
 
 ---
 
-## Technical Stack
+# Phase 1 – Authentication System
 
-### Frontend
+Build the Authentication Module for the Password Reset Walkthrough Bot.
 
-* HTML5
-* CSS3
-* Bootstrap 5
-* JavaScript
+### Requirements
+
+* User Registration
+* User Login
+* Password Hashing using bcrypt
+* Session Management
+* Logout Functionality
+* SQLite Database Integration
+
+### Frontend Pages
+
+* register.html
+* login.html
+* dashboard.html
 
 ### Backend
 
-* Python
 * FastAPI
-* Uvicorn
-
-### Database
-
+* SQLAlchemy
 * SQLite
+
+### Security Requirements
+
+* Validate user inputs
+* Prevent duplicate registrations
+* Store hashed passwords only
+* Protect user sessions
+
+### Deliverables
+
+* Authentication APIs
+* Database Models
+* Login System
+* Registration System
+* Dashboard Access Control
+
+---
+
+# Phase 2 – OTP Recovery Module
+
+Extend the Authentication Module with a secure OTP-Based Password Recovery System.
+
+### Requirements
+
+* Forgot Password Workflow
+* OTP Generation
+* OTP Storage
+* OTP Expiration Handling
+* OTP Verification
+* Password Reset Functionality
+
+### Database Updates
+
+* OTP Table
+* Expiration Timestamp
+* Verification Status
 
 ### Security
 
-* Password Hashing
+* OTP valid for 5 minutes
+* Prevent OTP reuse
+* Validate email ownership
+* Secure password reset process
+
+### Frontend Pages
+
+* forgot_password.html
+* verify_otp.html
+* reset_password.html
+
+### Deliverables
+
+* OTP Service
+* Recovery APIs
+* Password Reset Workflow
+
+---
+
+# Phase 3 – AI Risk Assessment Engine
+
+Develop an AI-Inspired Risk Assessment Engine for password recovery requests.
+
+### Objectives
+
+* Analyze recovery attempts
+* Generate risk score
+* Classify threat level
+
+### Inputs
+
+* Request frequency
+* Recovery attempts
+* Device information
+* Session patterns
+
+### Output Example
+
+```json
+{
+  "risk_level": "SAFE",
+  "risk_score": 100
+}
+```
+
+### Risk Categories
+
+* SAFE
+* MEDIUM_RISK
+* HIGH_RISK
+
+### Deliverables
+
+* risk_engine.py
+* Scoring Algorithm
+* Risk API Integration
+
+---
+
+# Phase 4 – Backend API Development
+
+Develop the complete backend architecture using FastAPI.
+
+### Authentication APIs
+
+POST /register
+
+POST /login
+
+GET /logout
+
+### Recovery APIs
+
+POST /forgot-password
+
+POST /verify-otp
+
+POST /reset-password
+
+### Risk APIs
+
+POST /risk-analysis
+
+### Requirements
+
+* Pydantic Validation
+* Structured JSON Responses
+* Exception Handling
+* Modular Routing
+* Database Integration
+
+### Architecture
+
+backend/
+├── routes/
+├── services/
+├── models/
+├── database/
+├── utils/
+└── main.py
+
+### Deliverables
+
+* Fully Functional FastAPI Backend
+* Modular API Structure
+* Deployment Ready Backend
+
+---
+
+# Phase 5 – Frontend Integration
+
+Develop a modern responsive frontend.
+
+### Pages
+
+* Login
+* Registration
+* Dashboard
+* Forgot Password
 * OTP Verification
-* Session Protection
-* Input Validation
+* Password Reset
+
+### Requirements
+
+* Bootstrap 5
+* Responsive Design
+* API Integration
+* Form Validation
+* Error Handling
+* Professional UI
+
+### User Experience Goals
+
+* Simple Navigation
+* Guided Recovery Process
+* Mobile Friendly Design
+* Consistent Interface
+
+### Deliverables
+
+* Complete Frontend
+* Backend Integration
+* Responsive UI
 
 ---
 
-## Functional Workflow
+# Phase 6 – Testing & Validation
 
-1. User registers an account.
-2. User logs into the system.
-3. User forgets password.
-4. User initiates password recovery.
-5. System generates OTP.
-6. OTP is sent to registered email.
-7. Walkthrough Bot guides user through verification steps.
-8. AI engine evaluates request risk.
-9. OTP validation is performed.
-10. User creates a new password.
-11. Password is securely updated.
-12. User regains account access.
+Perform comprehensive testing.
 
----
+### Authentication Testing
 
-## AI Walkthrough Behavior
+* Registration Testing
+* Login Testing
+* Logout Testing
 
-The bot should:
+### Recovery Testing
 
-* Explain each recovery step.
-* Provide contextual guidance.
-* Detect invalid inputs.
-* Suggest corrective actions.
-* Reduce user confusion.
-* Improve recovery success rate.
+* OTP Generation Testing
+* OTP Expiration Testing
+* OTP Verification Testing
+* Password Reset Testing
 
-Example:
+### Backend Testing
 
-Step 1: Enter your registered email.
+* API Testing
+* Validation Testing
+* Exception Handling Testing
 
-Step 2: Check your email inbox for the OTP.
+### Security Testing
 
-Step 3: Enter the received OTP.
+* Password Hash Verification
+* Session Security
+* Unauthorized Access Checks
 
-Step 4: Create a strong new password.
+### Deliverables
 
-Step 5: Confirm password update.
-
-Recovery completed successfully.
+* test_report.md
+* validation_report.md
+* bug_report.md
 
 ---
 
-## Security Requirements
+# Phase 7 – Deployment & Documentation
 
-* Store passwords using hashing.
-* Never store plain-text passwords.
-* OTP must expire after a fixed duration.
-* Prevent unauthorized password resets.
-* Validate all user inputs.
-* Protect against common web vulnerabilities.
+Prepare the project for deployment and public release.
+
+### Documentation
+
+* README.md
+* API Documentation
+* User Manual
+* Deployment Guide
+* Architecture Diagram
+* Workflow Diagram
+
+### Deployment Platforms
+
+* GitHub
+* Render
+* Vercel
+
+### Requirements
+
+* requirements.txt
+* Environment Configuration
+* Deployment Instructions
+
+### Repository Structure
+
+Password_Reset_Bot/
+├── backend/
+├── frontend/
+├── database/
+├── docs/
+├── screenshots/
+├── prompts/
+├── README.md
+└── requirements.txt
+
+### Final Deliverables
+
+* Production Ready Application
+* Complete Documentation
+* Deployment Guide
+* Portfolio Ready Repository
+* Recruiter Friendly Project Structure
 
 ---
 
-## API Endpoints
+## 🎯 Project Outcome
 
-### Authentication
+The Password Reset Walkthrough Bot demonstrates practical implementation of:
 
-* POST /register
-* POST /login
-* GET /logout
+* Cybersecurity Principles
+* Secure Authentication
+* OTP Verification
+* AI-Based Risk Assessment
+* FastAPI Development
+* Database Integration
+* Full Stack Development
+* Software Engineering Best Practices
+* Deployment and Documentation
 
-### Password Recovery
-
-* POST /forgot-password
-* POST /verify-otp
-* POST /reset-password
-
-### AI Analysis
-
-* POST /risk-analysis
-
----
-
-## Project Deliverables
-
-* Complete source code
-* Frontend pages
-* Backend APIs
-* Database integration
-* Documentation
-* Screenshots
-* Deployment guide
-* Architecture diagram
-* Testing report
-
----
-
-## Expected Outcome
-
-The final system should function as a secure, intelligent, and user-friendly Password Reset Walkthrough Bot capable of assisting users through password recovery while maintaining strong security standards and demonstrating practical AI integration in authentication workflows.
+This project is designed to showcase industry-level development practices and real-world password recovery workflows.
