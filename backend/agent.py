@@ -240,6 +240,28 @@ def handle_password_reset(db: Session, session: ChatSession, new_password: str) 
     
     return "Your password has been successfully updated! You can now log into your account. Let me know if you need help with anything else."
 
+# In-memory cache for Ollama connection status to avoid blocking 1.5s timeouts on every request
+import time
+_ollama_status = {"online": None, "last_checked": 0}
+
+def is_ollama_online(url: str) -> bool:
+    now = time.time()
+    # Cache the online/offline result for 60 seconds
+    if _ollama_status["online"] is not None and (now - _ollama_status["last_checked"] < 60):
+        return _ollama_status["online"]
+    
+    try:
+        # Short timeout to minimize blocking
+        res = requests.get(f"{url}/api/tags", timeout=1.0)
+        online = (res.status_code == 200)
+        _ollama_status["online"] = online
+        _ollama_status["last_checked"] = now
+        return online
+    except Exception:
+        _ollama_status["online"] = False
+        _ollama_status["last_checked"] = now
+        return False
+
 # Ollama LLM integration
 def process_agent_chat(db: Session, session_id: str, message: str) -> tuple:
     # 1. Fetch or create session
@@ -253,11 +275,17 @@ def process_agent_chat(db: Session, session_id: str, message: str) -> tuple:
         db.commit()
         db.refresh(session)
 
-    # 2. Check if Ollama is running and Llama 3.2 is available
+    # 2. Check if Ollama is running and Llama 3.2 is available (using cached check and ENABLE_OLLAMA environment variable)
     ollama_url = os.getenv("OLLAMA_URL", "http://localhost:11434")
+    enable_ollama = os.getenv("ENABLE_OLLAMA", "false").lower() in ("true", "1", "yes")
+    
+    if not (enable_ollama and is_ollama_online(ollama_url)):
+        response_msg = process_fallback_state(db, session, message)
+        return response_msg, session
+
     try:
         # Check endpoint
-        res = requests.get(f"{ollama_url}/api/tags", timeout=1.5)
+        res = requests.get(f"{ollama_url}/api/tags", timeout=1.0)
         if res.status_code == 200:
             # Ollama is running. Let's check if we can query Llama 3.2 or fallback to another model.
             # We will use llama3.2 if available, else we can request the default/first available model.

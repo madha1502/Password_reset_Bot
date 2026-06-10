@@ -21,7 +21,7 @@ import {
   AlertCircle
 } from "lucide-react";
 
-const API_BASE_URL = "http://localhost:8000";
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 interface Message {
   sender: "user" | "agent";
@@ -66,6 +66,7 @@ export default function Home() {
   const [users, setUsers] = useState<UserStore[]>([]);
   
   const [selectedEmail, setSelectedEmail] = useState<MockEmail | null>(null);
+  const [isApiOnline, setIsApiOnline] = useState<"checking" | "online" | "offline">("checking");
   const handleSendMessage = async (textToSend?: string) => {
     const text = (textToSend || inputMessage).trim();
     if (!text) return;
@@ -83,6 +84,7 @@ export default function Home() {
       });
 
       if (response.ok) {
+        setIsApiOnline("online");
         const data = await response.json();
         setCurrentStep(data.current_step);
         setSessionEmail(data.email);
@@ -97,15 +99,18 @@ export default function Home() {
             { sender: "agent", text: data.message, timestamp: new Date() }
           ]);
         }, 650);
+      } else {
+        setIsApiOnline("offline");
       }
     } catch (err) {
+      setIsApiOnline("offline");
       setTimeout(() => {
         setIsTyping(false);
         setMessages((prev) => [
           ...prev,
           {
             sender: "agent",
-            text: "Connection failed. Please verify that the FastAPI backend server is active on port 8000.",
+            text: `Connection failed. Please verify that the FastAPI backend server is active at ${API_BASE_URL}.`,
             timestamp: new Date()
           }
         ]);
@@ -191,29 +196,48 @@ export default function Home() {
         timestamp: new Date()
       }
     ]);
-
-    fetchInspectorData();
-    const interval = setInterval(fetchInspectorData, 2000);
-    return () => clearInterval(interval);
   }, []);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isTyping]);
 
+  // Optimized Polling: Polls every 4 seconds and ONLY fetches details relevant to the active inspector tab.
+  useEffect(() => {
+    fetchInspectorData();
+    const interval = setInterval(fetchInspectorData, 4000);
+    return () => clearInterval(interval);
+  }, [activeTab, API_BASE_URL]);
+
   const fetchInspectorData = async () => {
     try {
-      const [logsRes, emailsRes, usersRes] = await Promise.all([
-        fetch(`${API_BASE_URL}/audit-logs`),
-        fetch(`${API_BASE_URL}/debug/emails`),
-        fetch(`${API_BASE_URL}/debug/users`)
-      ]);
-
-      if (logsRes.ok) setAuditLogs(await logsRes.json());
-      if (emailsRes.ok) setEmails(await emailsRes.json());
-      if (usersRes.ok) setUsers(await usersRes.json());
+      if (activeTab === "workflow") {
+        const logsRes = await fetch(`${API_BASE_URL}/audit-logs`);
+        if (logsRes.ok) {
+          setAuditLogs(await logsRes.json());
+          setIsApiOnline("online");
+        } else {
+          setIsApiOnline("offline");
+        }
+      } else if (activeTab === "emails") {
+        const emailsRes = await fetch(`${API_BASE_URL}/debug/emails`);
+        if (emailsRes.ok) {
+          setEmails(await emailsRes.json());
+          setIsApiOnline("online");
+        } else {
+          setIsApiOnline("offline");
+        }
+      } else if (activeTab === "database") {
+        const usersRes = await fetch(`${API_BASE_URL}/debug/users`);
+        if (usersRes.ok) {
+          setUsers(await usersRes.json());
+          setIsApiOnline("online");
+        } else {
+          setIsApiOnline("offline");
+        }
+      }
     } catch (err) {
-      // Backend status is handled gracefully in header via offline banner
+      setIsApiOnline("offline");
     }
   };
 
@@ -224,10 +248,14 @@ export default function Home() {
     try {
       const res = await fetch(`${API_BASE_URL}/debug/seed`, { method: "POST" });
       if (res.ok) {
+        setIsApiOnline("online");
         handleResetSession();
         fetchInspectorData();
+      } else {
+        setIsApiOnline("offline");
       }
     } catch (err) {
+      setIsApiOnline("offline");
       alert("Error reaching seed endpoint.");
     }
   };
@@ -273,9 +301,28 @@ export default function Home() {
         </div>
 
         <div className="flex items-center gap-4">
-          <div className="hidden sm:flex items-center gap-2 text-[10px] font-mono text-zinc-400 bg-zinc-900/40 border border-zinc-800/80 px-2.5 py-1 rounded-md">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-            <span>API Server Connect</span>
+          {/* Dynamic API Status Indicator */}
+          <div className="hidden sm:flex items-center gap-2 text-[10px] font-mono bg-zinc-900/40 border border-zinc-800/80 px-2.5 py-1 rounded-md select-none">
+            <span className={`w-1.5 h-1.5 rounded-full ${
+              isApiOnline === "online" 
+                ? "bg-emerald-500 animate-pulse" 
+                : isApiOnline === "checking"
+                ? "bg-amber-500 animate-pulse"
+                : "bg-rose-500"
+            }`}></span>
+            <span className={
+              isApiOnline === "online" 
+                ? "text-zinc-400" 
+                : isApiOnline === "checking"
+                ? "text-amber-400"
+                : "text-rose-500 font-semibold"
+            }>
+              {isApiOnline === "online" 
+                ? "API Server Online" 
+                : isApiOnline === "checking"
+                ? "Connecting API..."
+                : "API Offline / Sleeping"}
+            </span>
           </div>
           <button
             onClick={handleResetSession}

@@ -26,22 +26,22 @@ def seed_db():
 
         # Seed mock users
         mock_users = [
-            ("admin@example.com", "adminpass123"),
-            ("user@example.com", "userpass456"),
-            ("test@example.com", "testpass789"),
-            ("john.doe@company.com", "companysecure123")
+            ("Admin", "admin@example.com", "adminpass123"),
+            ("Regular User", "user@example.com", "userpass456"),
+            ("Test User", "test@example.com", "testpass789"),
+            ("John Doe", "john.doe@company.com", "companysecure123")
         ]
         
         print("[Seed] Seeding mock users...")
-        for email, password in mock_users:
+        for name, email, password in mock_users:
             hashed = hash_password(password)
-            new_user = User(email=email, password=hashed)
+            new_user = User(name=name, email=email, password_hash=hashed)
             db.add(new_user)
         
         db.commit()
         print("[Seed] Successfully seeded database with default users:")
-        for email, password in mock_users:
-            print(f"  - Email: {email} | Password: {password}")
+        for name, email, password in mock_users:
+            print(f"  - Name: {name} | Email: {email} | Password: {password}")
             
     except Exception as e:
         print(f"[Seed] Error seeding database: {e}")

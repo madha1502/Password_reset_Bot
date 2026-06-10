@@ -35,24 +35,52 @@ app = FastAPI(
 )
 
 # CORS Configuration
+origins = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "https://password-reset-bot-git-main-madha1502s-projects.vercel.app",
+]
+
+# Support dynamic origins via comma-separated string in env
+ALLOWED_ORIGINS_ENV = os.getenv("ALLOWED_ORIGINS")
+if ALLOWED_ORIGINS_ENV:
+    for origin in ALLOWED_ORIGINS_ENV.split(","):
+        clean = origin.strip().rstrip("/")
+        if clean and clean not in origins:
+            origins.append(clean)
+
+FRONTEND_URL = os.getenv("FRONTEND_URL")
+if FRONTEND_URL:
+    cleaned_url = FRONTEND_URL.rstrip("/")
+    if cleaned_url not in origins:
+        origins.append(cleaned_url)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # For POC simplicity, allow all. In production, restrict to frontend domain.
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Create tables on startup
-Base.metadata.create_all(bind=engine)
-run_migrations(engine)
+# Root endpoint for health checks
+@app.get("/")
+def read_root():
+    return {
+        "status": "online",
+        "service": "AI Password Reset Walkthrough Bot API",
+        "timestamp": datetime.utcnow().isoformat()
+    }
 
-# Auto-seed mock users if table is empty
+# Safe database initialization inside startup hook (avoids multi-worker concurrency lock issues)
 @app.on_event("startup")
 def startup_populate_db():
-    db = next(get_db())
     try:
+        # Run DB creation and migrations on startup
+        Base.metadata.create_all(bind=engine)
         run_migrations(engine)
+        
+        db = next(get_db())
         user_count = db.query(User).count()
         if user_count == 0:
             mock_users = [
@@ -68,9 +96,12 @@ def startup_populate_db():
             db.commit()
             print("[Startup] Seeded default mock users into database.")
     except Exception as e:
-        print(f"[Startup] Error seeding database: {e}")
+        print(f"[Startup] Error during initialization/seeding: {e}")
     finally:
-        db.close()
+        try:
+            db.close()
+        except NameError:
+            pass
 
 # ----------------- Core REST API Endpoints -----------------
 
