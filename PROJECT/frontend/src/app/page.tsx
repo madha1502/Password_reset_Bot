@@ -21,7 +21,7 @@ import {
   AlertCircle
 } from "lucide-react";
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "https://password-reset-bot.onrender.com";
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 interface Message {
   sender: "user" | "agent";
@@ -95,6 +95,16 @@ export default function Home() {
           setMessages((prev) => [
             ...prev,
             { sender: "agent", text: data.message, timestamp: new Date() }
+          ]);
+        }, 650);
+      } else {
+        const data = await response.json();
+        const errorMsg = data.detail || "Server error occurred. Please check credentials or try again.";
+        setTimeout(() => {
+          setIsTyping(false);
+          setMessages((prev) => [
+            ...prev,
+            { sender: "agent", text: `⚠️ Error: ${errorMsg}`, timestamp: new Date() }
           ]);
         }, 650);
       }
@@ -602,8 +612,6 @@ export default function Home() {
                       emails.map((email) => {
                         const date = new Date(email.sent_at);
                         const isSelected = selectedEmail?.id === email.id;
-                        const otpMatch = email.body.match(/=== OTP CODE ===\r?\n(\d{6})/);
-                        const otpCode = otpMatch ? otpMatch[1] : null;
 
                         return (
                           <div
@@ -621,12 +629,7 @@ export default function Home() {
                                 {date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                               </span>
                             </div>
-                            <div className="text-[10px] text-zinc-500 truncate">{email.subject}</div>
-                            {otpCode && (
-                              <div className="self-start mt-1 px-1.5 py-0.5 bg-zinc-900 text-zinc-400 rounded border border-zinc-850 text-[9px] font-mono select-none">
-                                CODE: {otpCode}
-                              </div>
-                            )}
+                            <div className="text-[10px] text-zinc-550 truncate">{email.subject}</div>
                           </div>
                         );
                       })
@@ -655,38 +658,6 @@ export default function Home() {
                       {/* Body area */}
                       <div className="flex-1 p-5 overflow-y-auto font-mono text-[11px] text-zinc-400 leading-relaxed whitespace-pre-wrap select-text scrollbar-thin">
                         {selectedEmail.body}
-                        
-                        {(() => {
-                          const otpMatch = selectedEmail.body.match(/=== OTP CODE ===\r?\n(\d{6})/);
-                          const otpCode = otpMatch ? otpMatch[1] : null;
-                          if (otpCode) {
-                            return (
-                              <div className="mt-6 p-4 rounded border border-zinc-850 bg-zinc-900/20 flex items-center justify-between font-sans">
-                                <div>
-                                  <p className="text-[9px] text-zinc-550 font-bold uppercase tracking-wider">Payload Token</p>
-                                  <p className="text-base font-bold text-zinc-200 tracking-widest font-mono mt-0.5">{otpCode}</p>
-                                </div>
-                                <button
-                                  onClick={() => handleCopyOtp(otpCode)}
-                                  className="flex items-center gap-1 px-3 py-1.5 bg-zinc-900 hover:bg-zinc-850 hover:text-white border border-zinc-800 hover:border-zinc-700 text-zinc-300 rounded text-xs transition duration-150 cursor-pointer"
-                                >
-                                  {copiedOtp ? (
-                                    <>
-                                      <Check className="w-3 h-3 text-emerald-400" />
-                                      Copied
-                                    </>
-                                  ) : (
-                                    <>
-                                      <Clipboard className="w-3.5 h-3.5 text-zinc-500" />
-                                      Copy OTP
-                                    </>
-                                  )}
-                                </button>
-                              </div>
-                            );
-                          }
-                          return null;
-                        })()}
                       </div>
                     </div>
                   ) : (

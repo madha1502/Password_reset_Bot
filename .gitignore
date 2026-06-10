@@ -1,15 +1,18 @@
 # Node.js
-frontend/node_modules/
-frontend/.next/
-frontend/out/
-frontend/build/
-frontend/.env*.local
+/frontend/
+PROJECT/frontend/node_modules/
+PROJECT/frontend/.next/
+PROJECT/frontend/out/
+PROJECT/frontend/build/
+PROJECT/frontend/.env*.local
 
 # Python
-backend/venv/
-backend/__pycache__/
-backend/*.pyc
-backend/.env
+venv/
+/backend/
+PROJECT/backend/venv/
+PROJECT/backend/__pycache__/
+PROJECT/backend/*.pyc
+PROJECT/backend/.env
 
 # Databases & local logs
 *.db

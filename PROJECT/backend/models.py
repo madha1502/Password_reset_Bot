@@ -18,6 +18,7 @@ class OTPCode(Base):
     email = Column(String, index=True, nullable=False)
     otp = Column(String, nullable=False)
     expires_at = Column(DateTime, nullable=False)
+    is_used = Column(Boolean, default=False, nullable=False)
 
 class AuditLog(Base):
     __tablename__ = "audit_logs"

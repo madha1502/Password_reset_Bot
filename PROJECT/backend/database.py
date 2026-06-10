@@ -56,6 +56,15 @@ def run_migrations(engine):
                     except Exception as e:
                         print(f"[Migration Error] Could not add column {col_name} to chat_sessions: {e}")
 
+    if inspector.has_table("otp_codes"):
+        columns_otp = [col["name"] for col in inspector.get_columns("otp_codes")]
+        if "is_used" not in columns_otp:
+            with engine.begin() as conn:
+                try:
+                    conn.execute(text("ALTER TABLE otp_codes ADD COLUMN is_used BOOLEAN DEFAULT 0"))
+                except Exception as e:
+                    print(f"[Migration Error] Could not add column is_used to otp_codes: {e}")
+
 def get_db():
     db = SessionLocal()
     try:

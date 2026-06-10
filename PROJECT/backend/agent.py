@@ -1,6 +1,7 @@
 import os
 import re
 import random
+import secrets
 import requests
 from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
@@ -12,9 +13,13 @@ import hashlib
 def hash_password(password: str) -> str:
     return hashlib.sha256(password.encode()).hexdigest()
 
-# Generates 6-digit OTP
+# SHA-256 hash helper for OTP
+def hash_otp(otp: str) -> str:
+    return hashlib.sha256(otp.encode()).hexdigest()
+
+# Generates cryptographically secure 6-digit OTP
 def generate_otp() -> str:
-    return f"{random.randint(100000, 999999)}"
+    return f"{secrets.randbelow(900000) + 100000}"
 
 # Audit logger helper
 def log_audit(db: Session, email: str, action: str):
@@ -172,15 +177,16 @@ def handle_provided_email(db: Session, session: ChatSession, email: str) -> str:
     
     # Generate OTP
     otp = generate_otp()
-    expires_at = datetime.utcnow() + timedelta(minutes=10)
+    expires_at = datetime.utcnow() + timedelta(minutes=5)
     
-    # Save OTP
-    otp_code = OTPCode(email=email, otp=otp, expires_at=expires_at)
+    # Save OTP (securely hashed)
+    hashed_otp = hash_otp(otp)
+    otp_code = OTPCode(email=email, otp=hashed_otp, expires_at=expires_at, is_used=False)
     db.add(otp_code)
     db.commit()
     log_audit(db, email, "OTP_GENERATED")
     
-    # Send email
+    # Send email (pass the plain text OTP for the email dispatch)
     sent = send_otp_email(db, email, otp)
     if sent:
         log_audit(db, email, "OTP_SENT")
@@ -199,10 +205,12 @@ def handle_provided_otp(db: Session, session: ChatSession, otp: str) -> str:
         db.commit()
         return "It looks like we missed your email. Please provide your registered email."
 
-    # Validate OTP
+    # Hash OTP to validate against database record
+    hashed_otp = hash_otp(otp)
     db_otp = db.query(OTPCode).filter(
         OTPCode.email == email,
-        OTPCode.otp == otp,
+        OTPCode.otp == hashed_otp,
+        OTPCode.is_used == False,
         OTPCode.expires_at > datetime.utcnow()
     ).order_by(OTPCode.expires_at.desc()).first()
 
@@ -210,8 +218,8 @@ def handle_provided_otp(db: Session, session: ChatSession, otp: str) -> str:
         log_audit(db, email, "OTP_VERIFICATION_FAILED")
         return "That verification code is invalid or has expired. Please check your email and enter the correct 6-digit code."
 
-    # Successfully verified
-    db.delete(db_otp)  # consume OTP
+    # Successfully verified - mark as used and prevent OTP reuse
+    db_otp.is_used = True
     session.verified = True
     session.current_step = "AWAITING_NEW_PASSWORD"
     db.commit()
@@ -234,6 +242,9 @@ def handle_password_reset(db: Session, session: ChatSession, new_password: str) 
 
     user.password_hash = hash_password(new_password)
     log_audit(db, email, "PASSWORD_RESET")
+    
+    # Invalidate/delete the OTP code to prevent any possible reuse
+    db.query(OTPCode).filter(OTPCode.email == email).delete()
     
     session.current_step = "COMPLETED"
     db.commit()

@@ -24,7 +24,8 @@ from agent import (
     generate_otp,
     hash_password,
     log_audit,
-    send_otp_email
+    send_otp_email,
+    hash_otp
 )
 
 # Initialize FastAPI App
@@ -85,47 +86,53 @@ def startup_populate_db():
 
 # ----------------- Core REST API Endpoints -----------------
 
+@app.post("/forgot-password", status_code=status.HTTP_200_OK)
 @app.post("/request-reset", status_code=status.HTTP_200_OK)
-def request_reset(payload: ResetRequest, db: Session = Depends(get_db)):
+def forgot_password(payload: ResetRequest, db: Session = Depends(get_db)):
     email = payload.email.strip().lower()
     
     # Audit log
     log_audit(db, email, "RESET_REQUESTED")
     
+    # Validate email format
+    email_regex = r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$"
+    if not re.match(email_regex, email):
+        log_audit(db, email, "INVALID_EMAIL_FORMAT")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid email address format."
+        )
+    
     # Check if user exists
     user = db.query(User).filter(User.email == email).first()
     if not user:
         log_audit(db, email, "USER_NOT_FOUND")
-        return {
-            "status": "USER_NOT_FOUND",
-            "message": "No account found with this email.",
-            "actions": [
-                "register",
-                "retry_email"
-            ]
-        }
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No account found with this email."
+        )
     
     log_audit(db, email, "USER_FOUND")
 
-    # Generate OTP
+    # Generate secure 6-digit OTP
     otp = generate_otp()
-    expires_at = datetime.utcnow() + timedelta(minutes=10)
+    expires_at = datetime.utcnow() + timedelta(minutes=5)
     
-    # Save OTP
-    otp_code = OTPCode(email=email, otp=otp, expires_at=expires_at)
+    # Save OTP securely (hashed)
+    hashed_otp = hash_otp(otp)
+    otp_code = OTPCode(email=email, otp=hashed_otp, expires_at=expires_at, is_used=False)
     db.add(otp_code)
     db.commit()
     log_audit(db, email, "OTP_GENERATED")
     
-    # Send via SMTP & Save mock
+    # Send via SMTP
     sent = send_otp_email(db, email, otp)
     if sent:
         log_audit(db, email, "OTP_SENT")
 
     return {
         "status": "success",
-        "message": "OTP verification code sent successfully.",
-        "email": email
+        "message": "OTP has been sent to your email."
     }
 
 @app.post("/verify-otp", status_code=status.HTTP_200_OK)
@@ -134,26 +141,45 @@ def verify_otp(payload: VerifyOTPRequest, db: Session = Depends(get_db)):
     otp = payload.otp.strip()
 
     # Query active OTP
-    db_otp = db.query(OTPCode).filter(
-        OTPCode.email == email,
-        OTPCode.otp == otp,
-        OTPCode.expires_at > datetime.utcnow()
-    ).order_by(OTPCode.expires_at.desc()).first()
-
-    if not db_otp:
+    hashed_otp = hash_otp(otp)
+    
+    # We query the database to find any OTP requests for this email to give specific errors
+    any_otp = db.query(OTPCode).filter(OTPCode.email == email).order_by(OTPCode.expires_at.desc()).first()
+    
+    if not any_otp:
         log_audit(db, email, "OTP_VERIFICATION_FAILED")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid or expired OTP code."
+            detail="No password reset request found for this email address."
+        )
+    
+    if any_otp.is_used:
+        log_audit(db, email, "OTP_VERIFICATION_FAILED")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This OTP has already been verified and cannot be reused."
+        )
+        
+    if any_otp.expires_at < datetime.utcnow():
+        log_audit(db, email, "OTP_VERIFICATION_FAILED")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="OTP has expired."
         )
 
-    # Delete OTP code so it cannot be reused
-    db.delete(db_otp)
+    if any_otp.otp != hashed_otp:
+        log_audit(db, email, "OTP_VERIFICATION_FAILED")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Incorrect OTP."
+        )
+
+    # Successfully verified - mark as used and prevent OTP reuse
+    any_otp.is_used = True
     db.commit()
     
     log_audit(db, email, "OTP_VERIFIED")
 
-    # Return verification token (mocked for simplicity or set session verified status)
     return {
         "status": "success",
         "message": "OTP code verified successfully.",
@@ -173,35 +199,7 @@ def reset_password(payload: PasswordResetRequest, db: Session = Depends(get_db))
             detail="Password must be at least 6 characters long."
         )
 
-    # Note: Password reset must only occur after successful OTP verification.
-    # We require the valid OTP as a proof of verification for this direct endpoint, OR
-    # we verify that an OTP exists / was verified recently. For this endpoint, we double check
-    # if they provide the correct OTP again or if they bypass. To maintain secure gating,
-    # we check if OTP exists in database, but since verify-otp deletes it, we must structure it:
-    # Option: the client sends email, OTP and new password in one go, OR we verify it.
-    # To support both stateful agent flow and stateless direct API flow, if we want stateless API flow,
-    # the client sends OTP along with password, and we check if it is valid here.
-    # Let's check if they provided a valid OTP (we can store a temporary verification session in database
-    # or check the `ChatSession` verification status). Let's check if `ChatSession` for this email is verified!
-    session = db.query(ChatSession).filter(ChatSession.email == email, ChatSession.verified == True).first()
-    
-    if not session:
-        # If no active chat session is verified, we can check if they pass a valid OTP directly
-        db_otp = db.query(OTPCode).filter(
-            OTPCode.email == email,
-            OTPCode.otp == otp,
-            OTPCode.expires_at > datetime.utcnow()
-        ).first()
-        if not db_otp:
-            log_audit(db, email, "PASSWORD_RESET_UNAUTHORIZED")
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Password reset is unauthorized. Please verify your OTP first."
-            )
-        db.delete(db_otp)
-        db.commit()
-
-    # Execute reset
+    # Check if user exists
     user = db.query(User).filter(User.email == email).first()
     if not user:
         raise HTTPException(
@@ -209,15 +207,37 @@ def reset_password(payload: PasswordResetRequest, db: Session = Depends(get_db))
             detail="User not found."
         )
 
-    user.password_hash = hash_password(new_password)
-    db.commit()
-    log_audit(db, email, "PASSWORD_RESET")
+    # Note: Password reset must only occur after successful OTP verification.
+    session = db.query(ChatSession).filter(ChatSession.email == email, ChatSession.verified == True).first()
+    
+    hashed_otp = hash_otp(otp)
+    db_otp = db.query(OTPCode).filter(
+        OTPCode.email == email,
+        OTPCode.otp == hashed_otp,
+        OTPCode.is_used == True,
+        OTPCode.expires_at > datetime.utcnow()
+    ).first()
+    
+    if not session and not db_otp:
+        log_audit(db, email, "PASSWORD_RESET_UNAUTHORIZED")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Password reset is unauthorized. Please verify your OTP first."
+        )
 
+    # Execute reset
+    user.password_hash = hash_password(new_password)
+    
+    # Invalidate/delete all OTP codes for this user to prevent any potential reuse
+    db.query(OTPCode).filter(OTPCode.email == email).delete()
+    
     # Reset any active chat sessions verified state
     if session:
         session.verified = False
         session.current_step = "COMPLETED"
-        db.commit()
+        
+    db.commit()
+    log_audit(db, email, "PASSWORD_RESET")
 
     return {
         "status": "success",
