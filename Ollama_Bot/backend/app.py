@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 
 # Load .env relative to the app.py file location
 dotenv_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '.env')
-load_dotenv(dotenv_path)
+load_dotenv(dotenv_path, override=True)
 print(f"\n[DEBUG] Dotenv path: {dotenv_path}")
 print(f"[DEBUG] Dotenv file exists? {os.path.exists(dotenv_path)}")
 print(f"[DEBUG] SMTP Server loaded: {os.getenv('SMTP_SERVER')}")
