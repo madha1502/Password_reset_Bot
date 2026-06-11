@@ -1,20 +1,32 @@
 import os
-import json
-import urllib.request
-import urllib.error
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 
 
 def send_otp_email(to_email: str, otp: str, name: str = "User") -> bool:
-    """Send OTP email via SendGrid HTTP API."""
-    api_key   = os.getenv("SENDGRID_API_KEY")
-    mail_from = os.getenv("MAIL_FROM", "noreply@example.com")
+    """Send OTP email using standard SMTP mail protocols."""
+    smtp_server = os.getenv("SMTP_SERVER")
+    smtp_port = os.getenv("SMTP_PORT", "587")
+    smtp_username = os.getenv("SMTP_USERNAME")
+    smtp_password = os.getenv("SMTP_PASSWORD")
+    mail_from = os.getenv("MAIL_FROM", smtp_username or "noreply@example.com")
+    use_tls = os.getenv("SMTP_USE_TLS", "true").lower() == "true"
+    use_ssl = os.getenv("SMTP_USE_SSL", "false").lower() == "true"
 
-    if not api_key or "your-sendgrid-api-key" in api_key or api_key.startswith("<"):
-        print("\n" + "="*60)
-        print(f"  [DEV MODE] OTP Email for {to_email} ({name})")
+    # Fallback to dev mode if SMTP details are unconfigured
+    if not smtp_server or not smtp_username or not smtp_password or "your-smtp" in smtp_username:
+        print("\n" + "=" * 60)
+        print(f"  [DEV MODE - SMTP UNCONFIGURED] OTP Email for {to_email} ({name})")
         print(f"  Your 6-Digit OTP Code is: {otp}")
-        print("="*60 + "\n")
+        print("=" * 60 + "\n")
         return True
+
+    # Build MIME message container
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = "Password Reset OTP — Ollama Recovery Portal"
+    msg["From"] = mail_from
+    msg["To"] = to_email
 
     html_body = f"""<!DOCTYPE html>
 <html>
@@ -52,31 +64,23 @@ body{{font-family:Arial,sans-serif;background:#f4f4f5;padding:32px 16px;margin:0
         f"Ollama Password Recovery Portal"
     )
 
-    payload = json.dumps({
-        "personalizations": [{"to": [{"email": to_email}]}],
-        "from": {"email": mail_from},
-        "subject": "Password Reset OTP — Ollama Recovery Portal",
-        "content": [
-            {"type": "text/plain", "value": plain_body},
-            {"type": "text/html",  "value": html_body},
-        ],
-    }).encode("utf-8")
-
-    req = urllib.request.Request(
-        "https://api.sendgrid.com/v3/mail/send",
-        data=payload,
-        headers={
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type":  "application/json",
-        },
-        method="POST",
-    )
+    msg.attach(MIMEText(plain_body, "plain"))
+    msg.attach(MIMEText(html_body, "html"))
 
     try:
-        with urllib.request.urlopen(req) as resp:
-            print(f"[Email] OTP sent to {to_email}. HTTP {resp.status}")
-            return True
-    except urllib.error.HTTPError as e:
-        err = e.read().decode()
-        print(f"[Email] SendGrid error {e.code}: {err}")
-        raise RuntimeError(f"Failed to send email: {err}")
+        port = int(smtp_port)
+        if use_ssl:
+            server = smtplib.SMTP_SSL(smtp_server, port)
+        else:
+            server = smtplib.SMTP(smtp_server, port)
+            if use_tls:
+                server.starttls()
+
+        server.login(smtp_username, smtp_password)
+        server.sendmail(mail_from, to_email, msg.as_string())
+        server.quit()
+        print(f"[Email] OTP sent to {to_email} via SMTP.")
+        return True
+    except Exception as e:
+        print(f"[Email] SMTP send failed: {e}")
+        raise RuntimeError(f"SMTP failed to send mail: {e}")
