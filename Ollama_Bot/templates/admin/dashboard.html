@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin Dashboard — Ollama Recovery Portal</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+  <link href="/static/css/style.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body style="background: var(--bg-primary); color: var(--text-primary); font-family: 'Inter', sans-serif;">
+
+<!-- Navbar -->
+<nav class="navbar navbar-dark-custom sticky-top">
+  <div class="container-fluid px-4">
+    <span class="navbar-brand-text">🔐 Ollama Recovery Admin</span>
+    <div class="d-flex align-items-center gap-2">
+      <span id="admin-name" class="text-secondary me-2" style="font-size: .85rem;">Admin</span>
+      <a href="/" class="btn btn-outline-zinc btn-sm"><i class="bi bi-chat-left-text me-1"></i>Chat Portal</a>
+      <button onclick="handleLogout()" class="btn btn-accent btn-sm"><i class="bi bi-box-arrow-right me-1"></i>Logout</button>
+    </div>
+  </div>
+</nav>
+
+<div class="container py-4">
+  <div id="auth-loading" class="text-center py-5">
+    <div class="spinner-border text-accent mb-3" role="status"></div>
+    <p class="text-muted">Authenticating admin session...</p>
+  </div>
+
+  <div id="dashboard-content" class="d-none">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+      <div>
+        <h2 class="fw-700 mb-1">System Overview</h2>
+        <p class="text-muted mb-0">Real-time stats, security risk logs, and Ollama chatbot analytics</p>
+      </div>
+      <button onclick="loadDashboardData()" class="btn btn-outline-zinc btn-sm">
+        <i class="bi bi-arrow-clockwise me-1"></i>Refresh
+      </button>
+    </div>
+
+    <!-- Stats Row -->
+    <div class="row g-3 mb-4">
+      <div class="col-md-3 col-sm-6">
+        <div class="card-dark p-3 h-100">
+          <div class="d-flex justify-content-between align-items-start">
+            <div>
+              <p class="text-muted mb-1" style="font-size: .75rem; text-transform: uppercase; letter-spacing: .05em;">Total Users</p>
+              <h3 id="stat-users" class="fw-700 mb-0">0</h3>
+            </div>
+            <div class="badge bg-zinc p-2"><i class="bi bi-people text-secondary" style="font-size: 1.2rem;"></i></div>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-3 col-sm-6">
+        <div class="card-dark p-3 h-100">
+          <div class="d-flex justify-content-between align-items-start">
+            <div>
+              <p class="text-muted mb-1" style="font-size: .75rem; text-transform: uppercase; letter-spacing: .05em;">Resets Today</p>
+              <h3 id="stat-resets" class="fw-700 mb-0">0</h3>
+            </div>
+            <div class="badge bg-zinc p-2"><i class="bi bi-key text-secondary" style="font-size: 1.2rem;"></i></div>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-3 col-sm-6">
+        <div class="card-dark p-3 h-100">
+          <div class="d-flex justify-content-between align-items-start">
+            <div>
+              <p class="text-muted mb-1" style="font-size: .75rem; text-transform: uppercase; letter-spacing: .05em;">OTPs Sent Today</p>
+              <h3 id="stat-otps" class="fw-700 mb-0">0</h3>
+            </div>
+            <div class="badge bg-zinc p-2"><i class="bi bi-envelope text-secondary" style="font-size: 1.2rem;"></i></div>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-3 col-sm-6">
+        <div class="card-dark p-3 h-100">
+          <div class="d-flex justify-content-between align-items-start">
+            <div>
+              <p class="text-muted mb-1" style="font-size: .75rem; text-transform: uppercase; letter-spacing: .05em;">High Risk Today</p>
+              <h3 id="stat-high-risk" class="fw-700 mb-0 text-danger-custom">0</h3>
+            </div>
+            <div class="badge bg-danger-subtle p-2"><i class="bi bi-exclamation-triangle text-danger" style="font-size: 1.2rem;"></i></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Analytics Charts -->
+    <div class="row g-4 mb-4">
+      <div class="col-md-8">
+        <div class="card-dark p-4">
+          <h5 class="fw-600 mb-3"><i class="bi bi-graph-up me-2 text-accent"></i>OTP Requests Trend (Last 7 Days)</h5>
+          <div style="position: relative; height: 250px;">
+            <canvas id="trendChart"></canvas>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="card-dark p-4">
+          <h5 class="fw-600 mb-3"><i class="bi bi-chat-dots me-2 text-accent"></i>Chat Engine Stats</h5>
+          <div style="position: relative; height: 180px;" class="d-flex justify-content-center">
+            <canvas id="chatChart"></canvas>
+          </div>
+          <div class="text-center mt-3" style="font-size: .85rem;">
+            <span id="chat-total-msg" class="text-muted">Total Messages: 0</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Audit Logs Table -->
+    <div class="card-dark p-4">
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <h5 class="fw-600 mb-0"><i class="bi bi-list-task me-2 text-accent"></i>System Audit Logs</h5>
+        <div class="d-flex gap-2">
+          <input type="text" id="log-search" class="form-control form-control-dark form-control-sm" placeholder="Filter by email or action..." oninput="filterLogs()">
+        </div>
+      </div>
+      <div class="table-responsive">
+        <table class="table table-dark-custom table-hover mb-0">
+          <thead>
+            <tr>
+              <th>Timestamp</th>
+              <th>Email</th>
+              <th>Action</th>
+              <th>IP Address</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody id="logs-tbody">
+            <tr>
+              <td colspan="5" class="text-center py-4 text-muted">No logs recorded.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+let trendChart = null;
+let chatChart = null;
+let allLogsData = [];
+
+document.addEventListener("DOMContentLoaded", async () => {
+  // Verify Admin Session
+  try {
+    const res = await fetch("/auth/me");
+    if (!res.ok) {
+      window.location.href = "/login";
+      return;
+    }
+    const user = await res.json();
+    if (!user.is_admin) {
+      alert("Access Denied: You are not authorized as an admin.");
+      window.location.href = "/";
+      return;
+    }
+    document.getElementById("admin-name").textContent = user.name;
+    document.getElementById("auth-loading").classList.add("d-none");
+    document.getElementById("dashboard-content").classList.remove("d-none");
+    
+    // Load Dashboard Data
+    await loadDashboardData();
+  } catch (err) {
+    console.error("Auth check failed:", err);
+    window.location.href = "/login";
+  }
+});
+
+async function loadDashboardData() {
+  try {
+    const res = await fetch("/admin/dashboard");
+    if (!res.ok) throw new Error("Failed to fetch dashboard data");
+    const data = await res.json();
+
+    // Set Stats
+    document.getElementById("stat-users").textContent = data.stats.total_users;
+    document.getElementById("stat-resets").textContent = data.stats.resets_today;
+    document.getElementById("stat-otps").textContent = data.stats.otp_sent_today;
+    document.getElementById("stat-high-risk").textContent = data.stats.high_risk_today;
+    document.getElementById("chat-total-msg").textContent = `Total Messages: ${data.chat_stats.total_messages}`;
+
+    // Render Charts
+    renderTrendChart(data.trend);
+    renderChatChart(data.chat_stats);
+
+    // Populate Logs
+    allLogsData = data.logs;
+    renderLogs(allLogsData);
+
+  } catch (err) {
+    console.error("Failed to load dashboard data:", err);
+  }
+}
+
+function renderLogs(logs) {
+  const tbody = document.getElementById("logs-tbody");
+  tbody.innerHTML = "";
+  if (logs.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="5" class="text-center py-4 text-muted">No logs matching filter.</td></tr>`;
+    return;
+  }
+  logs.forEach(log => {
+    let badgeClass = "badge bg-zinc text-secondary";
+    if (log.action.includes("SUCCESS") || log.action.includes("VERIFIED") || log.action === "PASSWORD_RESET") {
+      badgeClass = "badge bg-success-subtle text-success";
+    } else if (log.action.includes("FAILED") || log.action.includes("NOT_FOUND")) {
+      badgeClass = "badge bg-danger-subtle text-danger";
+    } else if (log.action.includes("OTP")) {
+      badgeClass = "badge bg-info-subtle text-info";
+    }
+
+    const row = document.createElement("tr");
+    row.innerHTML = `
+      <td class="text-muted" style="font-size: .8rem;">${log.timestamp}</td>
+      <td class="fw-500">${log.email}</td>
+      <td><span class="${badgeClass}" style="font-size: .75rem;">${log.action}</span></td>
+      <td class="text-muted" style="font-size: .8rem; font-family: monospace;">${log.ip_address || 'N/A'}</td>
+      <td><span class="text-success" style="font-size: .8rem;"><i class="bi bi-check-circle-fill me-1"></i>Processed</span></td>
+    `;
+    tbody.appendChild(row);
+  });
+}
+
+function filterLogs() {
+  const query = document.getElementById("log-search").value.toLowerCase().trim();
+  if (!query) {
+    renderLogs(allLogsData);
+    return;
+  }
+  const filtered = allLogsData.filter(log => 
+    log.email.toLowerCase().includes(query) || 
+    log.action.toLowerCase().includes(query)
+  );
+  renderLogs(filtered);
+}
+
+function renderTrendChart(trend) {
+  const ctx = document.getElementById('trendChart').getContext('2d');
+  const labels = trend.map(t => t.date);
+  const counts = trend.map(t => t.count);
+
+  if (trendChart) trendChart.destroy();
+
+  trendChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: labels,
+      datasets: [{
+        label: 'OTP Sent',
+        data: counts,
+        borderColor: '#6366f1',
+        backgroundColor: 'rgba(99, 102, 241, 0.1)',
+        borderWidth: 2,
+        tension: 0.3,
+        fill: true
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false }
+      },
+      scales: {
+        x: {
+          grid: { color: 'rgba(255, 255, 255, 0.05)' },
+          ticks: { color: '#a1a1aa' }
+        },
+        y: {
+          grid: { color: 'rgba(255, 255, 255, 0.05)' },
+          ticks: { color: '#a1a1aa', stepSize: 1 },
+          beginAtZero: true
+        }
+      }
+    }
+  });
+}
+
+function renderChatChart(chatStats) {
+  const ctx = document.getElementById('chatChart').getContext('2d');
+  
+  if (chatChart) chatChart.destroy();
+
+  chatChart = new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      labels: ['User Messages', 'Assistant Messages'],
+      datasets: [{
+        data: [chatStats.user_messages, chatStats.assistant_messages],
+        backgroundColor: ['#6366f1', '#10b981'],
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.1)'
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: {
+          position: 'bottom',
+          labels: { color: '#a1a1aa', font: { size: 10 } }
+        }
+      }
+    }
+  });
+}
+
+async function handleLogout() {
+  try {
+    await fetch("/auth/logout", { method: "POST" });
+    window.location.href = "/login";
+  } catch (err) {
+    console.error("Logout failed:", err);
+  }
+}
+</script>
+
+<style>
+/* Dashboard customization */
+.text-danger-custom {
+  color: #ef4444;
+}
+.bg-danger-subtle {
+  background-color: rgba(239, 68, 68, 0.15) !important;
+}
+.bg-success-subtle {
+  background-color: rgba(16, 185, 129, 0.15) !important;
+}
+.bg-info-subtle {
+  background-color: rgba(14, 165, 233, 0.15) !important;
+}
+.table-dark-custom {
+  background-color: var(--bg-card) !important;
+  color: var(--text-primary) !important;
+  border-color: var(--border) !important;
+}
+.table-dark-custom th {
+  background-color: var(--bg-secondary) !important;
+  color: var(--text-secondary);
+  font-weight: 600;
+  text-transform: uppercase;
+  font-size: .75rem;
+  letter-spacing: .05em;
+  border-bottom: 1px solid var(--border) !important;
+  padding: 12px 16px;
+}
+.table-dark-custom td {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border) !important;
+  background-color: transparent !important;
+}
+.table-dark-custom tbody tr:hover td {
+  background-color: var(--bg-hover) !important;
+}
+</style>
+</body>
+</html>

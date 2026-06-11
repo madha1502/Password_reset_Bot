@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ollama Password Recovery Assistant</title>
+  <meta name="description" content="AI-powered password recovery assistant using local Ollama LLM">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+  <link href="/static/css/style.css" rel="stylesheet">
+</head>
+<body>
+
+<!-- Navbar -->
+<nav class="navbar navbar-dark-custom sticky-top">
+  <div class="container-fluid px-4">
+    <span class="navbar-brand-text">🔐 Ollama Recovery Assistant</span>
+    <div class="d-flex align-items-center gap-2">
+      <span id="session-label" class="text-muted d-none d-md-inline" style="font-size:.7rem;font-family:monospace;"></span>
+      <a href="/login"    class="btn btn-outline-zinc btn-sm">Login</a>
+      <a href="/register" class="btn btn-accent btn-sm">Register</a>
+      <a href="/admin/panel" class="btn btn-outline-zinc btn-sm" title="Admin"><i class="bi bi-speedometer2"></i></a>
+    </div>
+  </div>
+</nav>
+
+<div class="container-fluid" style="height:calc(100vh - 57px);">
+  <div class="row h-100">
+
+    <!-- Sidebar -->
+    <div class="col-lg-3 col-md-4 d-none d-md-flex flex-column sidebar">
+      <p class="text-muted mb-2" style="font-size:.68rem;text-transform:uppercase;letter-spacing:.1em;font-weight:600;">Reset Workflow</p>
+      <span class="sidebar-item active"><i class="bi bi-envelope me-2"></i>1. Request OTP</span>
+      <span class="sidebar-item"><i class="bi bi-shield-check me-2"></i>2. Verify OTP</span>
+      <span class="sidebar-item"><i class="bi bi-key me-2"></i>3. Reset Password</span>
+
+      <hr style="border-color:var(--border);margin:1rem 0;">
+
+      <p class="text-muted mb-2" style="font-size:.68rem;text-transform:uppercase;letter-spacing:.1em;font-weight:600;">Quick Actions</p>
+      <a href="/forgot-password" class="sidebar-item"><i class="bi bi-arrow-clockwise me-2"></i>Forgot Password</a>
+      <a href="/register"        class="sidebar-item"><i class="bi bi-person-plus me-2"></i>Create Account</a>
+      <a href="/login"           class="sidebar-item"><i class="bi bi-box-arrow-in-right me-2"></i>Login</a>
+
+      <hr style="border-color:var(--border);margin:1rem 0;">
+
+      <div class="card-dark p-3" style="font-size:.78rem;">
+        <p class="text-muted mb-2" style="font-size:.65rem;text-transform:uppercase;letter-spacing:.1em;">AI Engine</p>
+        <div class="d-flex align-items-center gap-2 mb-1">
+          <span id="ai-status-dot" style="width:8px;height:8px;border-radius:50%;background:var(--text-muted);display:inline-block;flex-shrink:0;"></span>
+          <span id="ai-status-text" class="text-muted">Checking Ollama…</span>
+        </div>
+        <p class="text-muted mb-0">Model: <span style="color:var(--text-secondary);">llama3</span></p>
+      </div>
+
+      <div class="mt-auto pt-3" style="font-size:.72rem;color:var(--text-muted);">
+        <i class="bi bi-info-circle me-1"></i>Responses generated locally via Ollama
+      </div>
+    </div>
+
+    <!-- Chat Area -->
+    <div class="col-lg-9 col-md-8 d-flex flex-column p-0" style="height:100%;">
+
+      <!-- Header -->
+      <div class="d-flex align-items-center justify-content-between px-4 py-3" style="border-bottom:1px solid var(--border);background:var(--bg-secondary);">
+        <div>
+          <h6 class="mb-0 fw-600">AI Support Assistant</h6>
+          <p class="mb-0 text-muted" style="font-size:.75rem;">Powered by Ollama · llama3</p>
+        </div>
+        <button class="btn btn-outline-zinc btn-sm" onclick="clearChat()">
+          <i class="bi bi-trash me-1"></i>Clear
+        </button>
+      </div>
+
+      <!-- Messages -->
+      <div id="chat-messages"></div>
+
+      <!-- Typing indicator -->
+      <div id="typing-indicator" class="d-none px-4 pb-2">
+        <div class="message-wrapper">
+          <div class="message-avatar avatar-ai">🤖</div>
+          <div class="typing-indicator">
+            <span class="typing-dot"></span>
+            <span class="typing-dot"></span>
+            <span class="typing-dot"></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Quick chips -->
+      <div id="quick-chips" class="px-4 py-2 d-flex flex-wrap gap-2">
+        <button class="quick-chip" onclick="sendQuick('I forgot my password')">🔑 Forgot Password</button>
+        <button class="quick-chip" onclick="sendQuick('I did not receive the OTP')">📧 OTP Not Received</button>
+        <button class="quick-chip" onclick="sendQuick('My OTP has expired')">⏱️ OTP Expired</button>
+        <button class="quick-chip" onclick="sendQuick('Give me password security tips')">🛡️ Security Tips</button>
+      </div>
+
+      <!-- Input -->
+      <div class="chat-input-container">
+        <div class="d-flex gap-2 align-items-end">
+          <textarea
+            id="chat-input"
+            class="chat-input flex-grow-1"
+            rows="1"
+            placeholder="Ask me anything about password recovery…"
+            onkeydown="handleKey(event)"
+            oninput="autoResize(this)"
+          ></textarea>
+          <button class="btn btn-accent px-3" onclick="sendMessage()" style="height:46px;min-width:46px;">
+            <i class="bi bi-send-fill"></i>
+          </button>
+        </div>
+        <p class="text-muted mb-0 mt-1" style="font-size:.68rem;text-align:center;">
+          Press <kbd style="background:var(--bg-hover);color:var(--text-secondary);border:1px solid var(--border);border-radius:4px;padding:1px 5px;">Enter</kbd> to send &nbsp;·&nbsp;
+          <kbd style="background:var(--bg-hover);color:var(--text-secondary);border:1px solid var(--border);border-radius:4px;padding:1px 5px;">Shift+Enter</kbd> for new line
+        </p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+<script src="/static/js/chat.js"></script>
+</body>
+</html>

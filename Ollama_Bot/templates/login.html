@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Login — Ollama Recovery Portal</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="/static/css/style.css" rel="stylesheet">
+</head>
+<body>
+<div class="auth-wrapper">
+  <div class="auth-card">
+    <div class="auth-logo">🔐</div>
+    <div class="auth-title">Welcome Back</div>
+    <div class="auth-subtitle">Sign in to your account</div>
+
+    <div id="error-msg"   class="alert-danger-dark  p-3 mb-3 d-none" style="font-size:.85rem;border-radius:8px;"></div>
+    <div id="success-msg" class="alert-success-dark p-3 mb-3 d-none" style="font-size:.85rem;border-radius:8px;"></div>
+
+    <form onsubmit="handleLogin(event)">
+      <div class="mb-3">
+        <label class="form-label-dark mb-2">Email Address</label>
+        <input type="email" id="email" class="form-control form-control-dark" placeholder="you@example.com" required>
+      </div>
+      <div class="mb-4">
+        <label class="form-label-dark mb-2">Password</label>
+        <input type="password" id="password" class="form-control form-control-dark" placeholder="Enter your password" required>
+      </div>
+      <button type="submit" id="login-btn" class="btn btn-accent w-100">Sign In</button>
+    </form>
+
+    <div class="text-center mt-3" style="font-size:.85rem;color:var(--text-muted);">
+      <a href="/forgot-password" style="color:var(--accent);text-decoration:none;">Forgot your password?</a>
+    </div>
+    <div class="text-center mt-2" style="font-size:.85rem;color:var(--text-muted);">
+      Don't have an account? <a href="/register" style="color:var(--accent);text-decoration:none;">Register</a>
+    </div>
+
+    <hr style="border-color:var(--border);margin:1.5rem 0;">
+    <p class="text-muted mb-2" style="font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;text-align:center;">Test Accounts</p>
+    <div style="font-size:.78rem;color:var(--text-muted);text-align:center;line-height:1.8;">
+      admin@ollama.com / admin123<br>
+      alice@example.com / alice123<br>
+      bob@example.com / bob123
+    </div>
+  </div>
+</div>
+<script>
+async function handleLogin(e) {
+  e.preventDefault();
+  const btn = document.getElementById('login-btn');
+  const err = document.getElementById('error-msg');
+  const suc = document.getElementById('success-msg');
+  err.classList.add('d-none'); suc.classList.add('d-none');
+  btn.disabled = true; btn.textContent = 'Signing in…';
+  try {
+    const res  = await fetch('/auth/login', {
+      method:'POST', credentials:'include',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({email: document.getElementById('email').value, password: document.getElementById('password').value})
+    });
+    const data = await res.json();
+    if (!res.ok) { err.textContent = data.error || 'Login failed.'; err.classList.remove('d-none'); }
+    else { suc.textContent = `Welcome back, ${data.name}!`; suc.classList.remove('d-none'); setTimeout(() => window.location.href = '/', 800); }
+  } catch { err.textContent = 'Connection error.'; err.classList.remove('d-none'); }
+  finally { btn.disabled = false; btn.textContent = 'Sign In'; }
+}
+</script>
+</body>
+</html>

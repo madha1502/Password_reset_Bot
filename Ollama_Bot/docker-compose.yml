@@ -1,0 +1,21 @@
+version: '3.8'
+
+services:
+  web:
+    build: .
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./ollama_bot.db:/app/ollama_bot.db
+      - ./flask_session:/app/flask_session
+    environment:
+      - SECRET_KEY=${SECRET_KEY}
+      - FLASK_DEBUG=${FLASK_DEBUG}
+      - DATABASE_URL=${DATABASE_URL}
+      - SENDGRID_API_KEY=${SENDGRID_API_KEY}
+      - MAIL_FROM=${MAIL_FROM}
+      - OLLAMA_URL=${OLLAMA_URL:-http://host.docker.internal:11434}
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-llama3}
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
