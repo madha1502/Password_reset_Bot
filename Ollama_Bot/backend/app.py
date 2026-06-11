@@ -5,7 +5,9 @@ from flask import Flask, jsonify, render_template
 from flask_cors import CORS
 from dotenv import load_dotenv
 
-load_dotenv()
+# Load .env relative to the app.py file location
+dotenv_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '.env')
+load_dotenv(dotenv_path)
 
 
 def hash_password(password: str) -> str:
