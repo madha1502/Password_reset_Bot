@@ -9,8 +9,12 @@ def send_otp_email(to_email: str, otp: str, name: str = "User") -> bool:
     api_key   = os.getenv("SENDGRID_API_KEY")
     mail_from = os.getenv("MAIL_FROM", "noreply@example.com")
 
-    if not api_key:
-        raise RuntimeError("SENDGRID_API_KEY is not configured in environment variables.")
+    if not api_key or "your-sendgrid-api-key" in api_key or api_key.startswith("<"):
+        print("\n" + "="*60)
+        print(f"  [DEV MODE] OTP Email for {to_email} ({name})")
+        print(f"  Your 6-Digit OTP Code is: {otp}")
+        print("="*60 + "\n")
+        return True
 
     html_body = f"""<!DOCTYPE html>
 <html>
