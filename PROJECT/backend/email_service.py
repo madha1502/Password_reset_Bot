@@ -142,19 +142,18 @@ Identity Portal Team
 
     # 4. Save masked mock email to DB (OTP redacted)
     try:
-        masked_body = plain_body.replace(otp, "******")
-        mock_email = MockEmail(
-            to_email=to_email,
-            subject="Password Reset OTP",
-            body=masked_body,
-            sent_at=datetime.utcnow()
-        )
-        db.add(mock_email)
-        db.commit()
-        db.refresh(mock_email)
-        print(f"[Email Service] Mock email saved. ID: {mock_email.id} (OTP redacted)")
-    except Exception as db_err:
-        print(f"[Email Service] Error saving mock email: {db_err}")
+    mock_email = MockEmail(
+        to_email=to_email,
+        subject="Password Reset OTP",
+        body=plain_body,
+        sent_at=datetime.utcnow()
+    )
+    db.add(mock_email)
+    db.commit()
+    db.refresh(mock_email)
+    print(f"[Email Service] Mock email saved. ID: {mock_email.id}")
+except Exception as db_err:
+    print(f"[Email Service] Error saving mock email: {db_err}")
 
     # 5. Send via SendGrid HTTP API
     try:
